@@ -384,6 +384,7 @@ def render_trades_and_chart() -> None:
         yaxis_title="净值",
         legend_title="图例",
         template="plotly_white",
+        xaxis_rangeslider_visible=True,
     )
     st.plotly_chart(fig, use_container_width=True)
 
