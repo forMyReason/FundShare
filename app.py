@@ -967,6 +967,12 @@ def render_trades_and_chart() -> None:
     else:
         buy_points = []
     buy_points = service.filter_records_by_date_range(buy_points, "date", win_start, win_end)
+    sell_points = [
+        {"date": str(tx["confirm_date"]), "price": float(tx["price"]), "shares": float(tx["shares"])}
+        for tx in tx_all
+        if str(tx.get("tx_type")) == "sell"
+    ]
+    sell_points = service.filter_records_by_date_range(sell_points, "date", win_start, win_end)
 
     gaps = service.nav_point_calendar_gaps(nav_filtered, min_gap_days=14)
     with st.expander("净值曲线说明与数据间隔", expanded=False):
@@ -986,6 +992,7 @@ def render_trades_and_chart() -> None:
         value=False,
         key=f"nav_dod_{fund_id}",
     )
+    show_sell_markers = st.checkbox("显示卖出点", value=False, key=f"nav_sell_markers_{fund_id}")
     nav_pct = (nav_df["nav"].astype(float).pct_change() * 100.0).fillna(0.0)
     nav_base = float(nav_df["nav"].iloc[0]) if not nav_df.empty else 1.0
     nav_dtick = max(0.0001, round(nav_base * 0.04, 4))
@@ -1031,6 +1038,21 @@ def render_trades_and_chart() -> None:
                 ),
                 secondary_y=False,
             )
+        if show_sell_markers and sell_points:
+            sell_df = pd.DataFrame(sell_points)
+            fig.add_trace(
+                go.Scatter(
+                    x=sell_df["date"],
+                    y=sell_df["price"],
+                    mode="markers",
+                    name="卖出点",
+                    marker={"color": "#4d96ff", "size": 7, "symbol": "diamond"},
+                    text=sell_df["shares"].apply(lambda v: f"卖出份额: {float(v):.2f}"),
+                    hoverlabel={"font": {"size": 14}},
+                    hovertemplate="日期=%{x}<br>卖出净值=%{y:.4f}<br>%{text}<extra></extra>",
+                ),
+                secondary_y=False,
+            )
         fig.update_layout(
             title="",
             legend_title="图例",
@@ -1069,6 +1091,20 @@ def render_trades_and_chart() -> None:
                     ),
                     hoverlabel={"font": {"size": 16}},
                     hovertemplate="日期=%{x}<br>买入净值=%{y:.4f}<br>%{text}<extra></extra>",
+                )
+            )
+        if show_sell_markers and sell_points:
+            sell_df = pd.DataFrame(sell_points)
+            fig.add_trace(
+                go.Scatter(
+                    x=sell_df["date"],
+                    y=sell_df["price"],
+                    mode="markers",
+                    name="卖出点",
+                    marker={"color": "#4d96ff", "size": 7, "symbol": "diamond"},
+                    text=sell_df["shares"].apply(lambda v: f"卖出份额: {float(v):.2f}"),
+                    hoverlabel={"font": {"size": 14}},
+                    hovertemplate="日期=%{x}<br>卖出净值=%{y:.4f}<br>%{text}<extra></extra>",
                 )
             )
         else:
