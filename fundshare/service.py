@@ -7,6 +7,7 @@ from io import StringIO
 import re
 from typing import Any
 
+from .errors import DomainError
 from .fund_api import FundApiClient
 from .models import Fund, NavPoint, Transaction
 from .money import q_money, q_ratio
@@ -37,9 +38,9 @@ class PortfolioService:
         data = self._load()
         normalized_code = self.normalize_fund_code(code)
         if any(f["code"] == normalized_code for f in data["funds"]):
-            raise ValueError("基金代码已存在，请勿重复添加")
+            raise DomainError("基金代码已存在，请勿重复添加")
         if float(current_nav) <= 0:
-            raise ValueError("基金净值必须大于0")
+            raise DomainError("基金净值必须大于0")
         fund = Fund(
             id=self._next_id(data, "fund"),
             code=normalized_code,
@@ -60,13 +61,13 @@ class PortfolioService:
     def update_fund_nav(self, fund_id: int, nav: float, nav_date: str | None = None) -> None:
         data = self._load()
         if float(nav) <= 0:
-            raise ValueError("基金净值必须大于0")
+            raise DomainError("基金净值必须大于0")
         for fund in data["funds"]:
             if fund["id"] == fund_id:
                 fund["current_nav"] = float(nav)
                 break
         else:
-            raise ValueError("基金不存在")
+            raise DomainError("基金不存在")
         data["nav_points"].append(
             NavPoint(
                 id=self._next_id(data, "nav"),
@@ -106,7 +107,7 @@ class PortfolioService:
         sell_shares = float(shares)
         remain = self._total_remaining_shares(data, fund_id)
         if sell_shares > remain + 1e-9:
-            raise ValueError("卖出份额超过当前持仓")
+            raise DomainError("卖出份额超过当前持仓")
         tx = Transaction(
             id=self._next_id(data, "tx"),
             fund_id=fund_id,
@@ -130,7 +131,7 @@ class PortfolioService:
         data = self._load()
         txs = [tx for tx in data["transactions"] if tx["fund_id"] == fund_id]
         if date_field not in {"confirm_date", "apply_date"}:
-            raise ValueError("date_field must be confirm_date or apply_date")
+            raise DomainError("date_field must be confirm_date or apply_date")
         return sorted(txs, key=lambda x: (x[date_field], x["id"]))
 
     def filter_transactions_by_date_range(
@@ -141,7 +142,7 @@ class PortfolioService:
         date_field: str = "confirm_date",
     ) -> list[dict[str, Any]]:
         if start_date > end_date:
-            raise ValueError("开始日期不能晚于结束日期")
+            raise DomainError("开始日期不能晚于结束日期")
         txs = self.get_transactions(fund_id, date_field=date_field)
         return [tx for tx in txs if start_date <= tx[date_field] <= end_date]
 
@@ -152,7 +153,7 @@ class PortfolioService:
         if tx_type == "all":
             return transactions
         if tx_type not in {"buy", "sell"}:
-            raise ValueError("tx_type must be all, buy or sell")
+            raise DomainError("tx_type must be all, buy or sell")
         return [tx for tx in transactions if tx["tx_type"] == tx_type]
 
     def get_open_buy_points(self, fund_id: int, date_field: str = "confirm_date") -> list[dict[str, Any]]:
@@ -183,7 +184,7 @@ class PortfolioService:
 
     def _ensure_fund(self, data: dict[str, Any], fund_id: int) -> None:
         if not any(f["id"] == fund_id for f in data["funds"]):
-            raise ValueError("基金不存在")
+            raise DomainError("基金不存在")
 
     def _total_remaining_shares(self, data: dict[str, Any], fund_id: int) -> float:
         bought = sum(tx["shares"] for tx in data["transactions"] if tx["fund_id"] == fund_id and tx["tx_type"] == "buy")
@@ -202,9 +203,9 @@ class PortfolioService:
     def normalize_fund_code(code: str) -> str:
         normalized = code.strip()
         if not normalized:
-            raise ValueError("基金代码不能为空")
+            raise DomainError("基金代码不能为空")
         if not re.fullmatch(r"\d{6}", normalized):
-            raise ValueError("基金代码格式错误，应为6位数字")
+            raise DomainError("基金代码格式错误，应为6位数字")
         return normalized
 
     def export_transactions_csv(self, fund_id: int, date_field: str = "confirm_date") -> str:
@@ -296,9 +297,9 @@ class PortfolioService:
             price = float(row["price"])
             shares = float(row["shares"])
         except (KeyError, TypeError, ValueError) as e:
-            raise ValueError(f"交易记录字段不完整或类型错误: {e}") from e
+            raise DomainError(f"交易记录字段不完整或类型错误: {e}") from e
         if tx_type not in ("buy", "sell"):
-            raise ValueError("tx_type 必须是 buy 或 sell")
+            raise DomainError("tx_type 必须是 buy 或 sell")
         datetime.strptime(apply_date, "%Y-%m-%d")
         datetime.strptime(confirm_date, "%Y-%m-%d")
         return tx_type, apply_date, confirm_date, price, shares
@@ -307,25 +308,25 @@ class PortfolioService:
         try:
             payload = json.loads(json_text)
         except json.JSONDecodeError as e:
-            raise ValueError(f"JSON 解析失败: {e}") from e
+            raise DomainError(f"JSON 解析失败: {e}") from e
         if not isinstance(payload, dict):
-            raise ValueError("JSON 根节点必须是对象")
+            raise DomainError("JSON 根节点必须是对象")
         fund_code_raw = payload.get("fund_code")
         if not fund_code_raw:
-            raise ValueError("缺少 fund_code")
+            raise DomainError("缺少 fund_code")
         rows = payload.get("transactions")
         if not isinstance(rows, list) or not rows:
-            raise ValueError("transactions 必须是非空数组")
+            raise DomainError("transactions 必须是非空数组")
         data = self._load()
         normalized = self.normalize_fund_code(str(fund_code_raw))
         fund = next((f for f in data["funds"] if f["code"] == normalized), None)
         if not fund:
-            raise ValueError("基金不存在，请先添加该基金")
+            raise DomainError("基金不存在，请先添加该基金")
         fund_id = int(fund["id"])
         count = 0
         for row in rows:
             if not isinstance(row, dict):
-                raise ValueError("transactions 中每项必须是对象")
+                raise DomainError("transactions 中每项必须是对象")
             tx_type, apply_date, confirm_date, price, shares = self._parse_import_tx_row(row)
             if tx_type == "buy":
                 self.add_buy(fund_id, apply_date, confirm_date, price, shares)
@@ -361,11 +362,11 @@ class PortfolioService:
     @staticmethod
     def _validate_trade_inputs(apply_date: str, confirm_date: str, price: float, shares: float) -> None:
         if apply_date > confirm_date:
-            raise ValueError("申请日不能晚于确认日")
+            raise DomainError("申请日不能晚于确认日")
         if float(price) <= 0:
-            raise ValueError("价格必须大于0")
+            raise DomainError("价格必须大于0")
         if float(shares) <= 0:
-            raise ValueError("份额必须大于0")
+            raise DomainError("份额必须大于0")
 
     @staticmethod
     def classify_sell_risk(
