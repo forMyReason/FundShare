@@ -922,6 +922,16 @@ def render_trades_and_chart() -> None:
     if chart_key not in st.session_state:
         st.session_state[chart_key] = "近1年"
     chart_range = str(st.session_state[chart_key])
+    span_days_map = {"近3月": 90, "近6月": 180, "近1年": 365, "近3年": 1095, "近5年": 1825}
+    total_days = 0
+    if nav_points:
+        nav_dates = sorted(pd.to_datetime(pd.DataFrame(nav_points)["date"]))
+        if len(nav_dates) >= 2:
+            total_days = int((nav_dates[-1] - nav_dates[0]).days)
+    need_days = span_days_map.get(chart_range, 0)
+    if need_days > 0 and total_days > 0 and total_days < need_days:
+        years = "3年" if chart_range == "近3年" else "5年" if chart_range == "近5年" else chart_range
+        st.warning(f"该基金成立时长不足{years}，当前将展示可用的全部历史区间。")
 
     win_start, win_end = service.nav_chart_date_window(nav_points, chart_range)
     nav_filtered = service.filter_records_by_date_range(nav_points, "date", win_start, win_end)
