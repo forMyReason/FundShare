@@ -117,6 +117,7 @@ def render_trades_and_chart() -> None:
     selected_label = st.selectbox("选择基金", list(options.keys()))
     fund_id = options[selected_label]
     selected_fund = next(f for f in funds if f["id"] == fund_id)
+    remaining_shares = service.get_remaining_shares(fund_id)
     summary = service.get_position_summary(fund_id)
     c1, c2, c3, c4, c5 = st.columns(5)
     c1.metric("持仓份额", f"{summary['holding_shares']:.4f}")
@@ -161,6 +162,7 @@ def render_trades_and_chart() -> None:
     with t2:
         with st.form("sell_form", clear_on_submit=True):
             st.markdown("**卖出（FIFO）**")
+            st.caption(f"当前可卖出份额：{remaining_shares:.4f}")
             apply_d = st.date_input("卖出申请日", value=date.today(), key="sell_apply_date")
             confirm_d = st.date_input("卖出确认日", value=date.today(), key="sell_confirm_date")
             auto_price = st.checkbox("使用确认日自动净值", value=True, key="sell_auto_price")
@@ -178,7 +180,16 @@ def render_trades_and_chart() -> None:
                 price = st.number_input(
                     "卖出确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="sell_price"
                 )
-            shares = st.number_input("卖出份额", min_value=0.0001, value=100.0, step=1.0, format="%.4f", key="sell_shares")
+            default_sell = min(100.0, remaining_shares) if remaining_shares > 0 else 0.0001
+            shares = st.number_input(
+                "卖出份额",
+                min_value=0.0001,
+                max_value=max(0.0001, remaining_shares),
+                value=default_sell,
+                step=1.0,
+                format="%.4f",
+                key="sell_shares",
+            )
             submitted = st.form_submit_button("记录卖出")
             if submitted:
                 try:

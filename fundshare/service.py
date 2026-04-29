@@ -166,6 +166,11 @@ class PortfolioService:
         sold = sum(tx["shares"] for tx in data["transactions"] if tx["fund_id"] == fund_id and tx["tx_type"] == "sell")
         return float(bought - sold)
 
+    def get_remaining_shares(self, fund_id: int) -> float:
+        data = self._load()
+        self._ensure_fund(data, fund_id)
+        return round(self._total_remaining_shares(data, fund_id), 4)
+
     def auto_fetch_fund_info(self, code: str, target_date: str) -> tuple[str, float]:
         return self.api_client.fetch_name_and_nav(code, target_date)
 

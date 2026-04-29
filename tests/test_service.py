@@ -224,6 +224,13 @@ def test_all_position_summaries_sorted_by_floating_pnl(service: PortfolioService
     assert rows[1]["code"] == "710002"
 
 
+def test_get_remaining_shares(service: PortfolioService) -> None:
+    fund = service.add_fund("720001", "剩余份额测试", 1.0, "2026-07-01")
+    service.add_buy(fund["id"], "2026-07-02", "2026-07-03", 1.0, 50)
+    service.add_sell(fund["id"], "2026-07-04", "2026-07-05", 1.1, 10)
+    assert service.get_remaining_shares(fund["id"]) == 40.0
+
+
 def test_auto_fetch_fund_info_with_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     sample_js = """
     var fS_name = "示例基金";
