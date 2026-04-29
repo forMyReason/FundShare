@@ -510,6 +510,22 @@ def render_maintenance() -> None:
                 st.success("该基金历史记录已清空。")
                 st.rerun()
 
+    with st.expander("危险操作：一键删除基金及全部记录", expanded=False):
+        st.warning("该操作会删除基金本体、全部交易和全部净值点，不可恢复。")
+        purge_pick = st.selectbox("选择要一键删除的基金", options=list(maint_labels.keys()), key="maint_fund_purge_pick")
+        purge_phrase = st.text_input("请输入 DELETE 以确认", value="", key="maint_fund_purge_phrase")
+        if st.button("一键删除基金及全部记录", key="maint_fund_purge_btn", type="primary"):
+            if purge_phrase.strip().upper() != "DELETE":
+                st.error("确认词不正确，请输入 DELETE。")
+            else:
+                try:
+                    service.purge_fund(maint_labels[purge_pick])
+                except DomainError as e:
+                    st.error(str(e))
+                else:
+                    st.success("基金及其所有记录已删除。")
+                    st.rerun()
+
     with st.expander("删除买入/卖出记录", expanded=False):
         tx_fund_pick = st.selectbox("选择基金", options=list(maint_labels.keys()), key="maint_tx_fund_pick")
         tx_fund_id = maint_labels[tx_fund_pick]

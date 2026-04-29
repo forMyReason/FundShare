@@ -57,6 +57,14 @@ class PortfolioService:
         data["transactions"] = [t for t in data["transactions"] if t["fund_id"] != fund_id]
         self._save(data)
 
+    def purge_fund(self, fund_id: int) -> None:
+        data = self._load()
+        self._ensure_fund(data, fund_id)
+        data["funds"] = [f for f in data["funds"] if f["id"] != fund_id]
+        data["nav_points"] = [p for p in data["nav_points"] if p["fund_id"] != fund_id]
+        data["transactions"] = [t for t in data["transactions"] if t["fund_id"] != fund_id]
+        self._save(data)
+
     def delete_transaction(self, fund_id: int, tx_id: int) -> None:
         data = self._load()
         self._ensure_fund(data, fund_id)

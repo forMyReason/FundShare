@@ -326,6 +326,24 @@ def test_clear_fund_records_removes_nav_and_transactions(service: PortfolioServi
     assert service.get_remaining_shares(fund["id"]) == 0.0
 
 
+def test_purge_fund_removes_only_target_fund_data(service: PortfolioService) -> None:
+    fa = service.add_fund("720104", "A基金", 1.0, "2026-07-01")
+    fb = service.add_fund("720105", "B基金", 1.0, "2026-07-01")
+    service.add_buy(fa["id"], "2026-07-03", "2026-07-03", 1.01, 10)
+    service.add_buy(fb["id"], "2026-07-03", "2026-07-03", 1.02, 20)
+    service.purge_fund(fa["id"])
+    funds = service.list_funds()
+    assert len(funds) == 1
+    assert funds[0]["id"] == fb["id"]
+    assert service.get_transactions(fb["id"]) != []
+    assert service.get_nav_points(fb["id"]) != []
+
+
+def test_purge_fund_missing_id_raises(service: PortfolioService) -> None:
+    with pytest.raises(ValueError):
+        service.purge_fund(999999)
+
+
 def test_filter_transactions_by_date_range(service: PortfolioService) -> None:
     fund = service.add_fund("750001", "日期筛选测试", 1.0, "2026-07-01")
     service.add_buy(fund["id"], "2026-07-02", "2026-07-03", 1.0, 10)
