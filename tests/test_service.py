@@ -212,6 +212,17 @@ def test_position_summary_calculation(service: PortfolioService) -> None:
     assert summary["avg_cost"] == 1.0833
 
 
+def test_all_position_summaries_sorted_by_floating_pnl(service: PortfolioService) -> None:
+    fund_a = service.add_fund("710001", "A基金", 1.2, "2026-07-01")
+    fund_b = service.add_fund("710002", "B基金", 0.9, "2026-07-01")
+    service.add_buy(fund_a["id"], "2026-07-02", "2026-07-03", 1.0, 100)
+    service.add_buy(fund_b["id"], "2026-07-02", "2026-07-03", 1.0, 100)
+    rows = service.get_all_position_summaries()
+    assert len(rows) == 2
+    assert rows[0]["code"] == "710001"
+    assert rows[1]["code"] == "710002"
+
+
 def test_auto_fetch_fund_info_with_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     sample_js = """
     var fS_name = "示例基金";

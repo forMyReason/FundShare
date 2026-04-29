@@ -253,4 +253,28 @@ def render_trades_and_chart() -> None:
 render_fund_management()
 st.divider()
 render_trades_and_chart()
+st.divider()
+st.subheader("3) 多基金持仓对比")
+all_summaries = service.get_all_position_summaries()
+if all_summaries:
+    summary_df = pd.DataFrame(all_summaries).rename(
+        columns={
+            "code": "基金代码",
+            "name": "基金名称",
+            "holding_shares": "持仓份额",
+            "holding_cost": "持仓成本",
+            "avg_cost": "持仓均价",
+            "current_nav": "当前净值",
+            "market_value": "估值",
+            "floating_pnl": "浮动盈亏",
+        }
+    )
+    st.dataframe(
+        summary_df[["基金代码", "基金名称", "持仓份额", "持仓成本", "持仓均价", "当前净值", "估值", "浮动盈亏"]],
+        use_container_width=True,
+    )
+    bar_df = summary_df[["基金代码", "浮动盈亏"]]
+    st.bar_chart(bar_df, x="基金代码", y="浮动盈亏")
+else:
+    st.info("暂无基金数据。")
 

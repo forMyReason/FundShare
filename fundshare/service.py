@@ -198,6 +198,21 @@ class PortfolioService:
             "current_nav": round(float(fund["current_nav"]), 4),
         }
 
+    def get_all_position_summaries(self) -> list[dict[str, Any]]:
+        funds = self.list_funds()
+        summaries: list[dict[str, Any]] = []
+        for fund in funds:
+            summary = self.get_position_summary(fund["id"])
+            summaries.append(
+                {
+                    "fund_id": fund["id"],
+                    "code": fund["code"],
+                    "name": fund["name"],
+                    **summary,
+                }
+            )
+        return sorted(summaries, key=lambda x: x["floating_pnl"], reverse=True)
+
     @staticmethod
     def _validate_trade_inputs(apply_date: str, confirm_date: str, price: float, shares: float) -> None:
         if apply_date > confirm_date:
