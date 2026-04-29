@@ -1025,6 +1025,7 @@ def render_trades_and_chart() -> None:
                         lambda row: f"当日买入笔数: {int(row['buy_count'])} | 买入份额: {float(row['original_shares']):.2f} | 剩余份额: {float(row['remaining_shares']):.2f}",
                         axis=1,
                     ),
+                    hoverlabel={"font": {"size": 16}},
                     hovertemplate="日期=%{x}<br>买入净值=%{y:.4f}<br>%{text}<extra></extra>",
                 ),
                 secondary_y=False,
@@ -1064,6 +1065,7 @@ def render_trades_and_chart() -> None:
                         lambda row: f"当日买入笔数: {int(row['buy_count'])} | 买入份额: {float(row['original_shares']):.2f} | 剩余份额: {float(row['remaining_shares']):.2f}",
                         axis=1,
                     ),
+                    hoverlabel={"font": {"size": 16}},
                     hovertemplate="日期=%{x}<br>买入净值=%{y:.4f}<br>%{text}<extra></extra>",
                 )
             )
