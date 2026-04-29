@@ -231,6 +231,18 @@ def test_get_remaining_shares(service: PortfolioService) -> None:
     assert service.get_remaining_shares(fund["id"]) == 40.0
 
 
+def test_portfolio_overview_aggregates_totals(service: PortfolioService) -> None:
+    a = service.add_fund("730001", "组合A", 1.2, "2026-07-01")
+    b = service.add_fund("730002", "组合B", 0.8, "2026-07-01")
+    service.add_buy(a["id"], "2026-07-02", "2026-07-03", 1.0, 100)
+    service.add_buy(b["id"], "2026-07-02", "2026-07-03", 1.0, 50)
+    overview = service.get_portfolio_overview()
+    assert overview["total_cost"] == 150.0
+    assert overview["total_value"] == 160.0
+    assert overview["total_pnl"] == 10.0
+    assert overview["pnl_ratio"] == 0.066667
+
+
 def test_auto_fetch_fund_info_with_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     sample_js = """
     var fS_name = "示例基金";

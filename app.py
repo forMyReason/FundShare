@@ -261,31 +261,40 @@ def render_trades_and_chart() -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
-render_fund_management()
-st.divider()
-render_trades_and_chart()
-st.divider()
-st.subheader("3) 多基金持仓对比")
-all_summaries = service.get_all_position_summaries()
-if all_summaries:
-    summary_df = pd.DataFrame(all_summaries).rename(
-        columns={
-            "code": "基金代码",
-            "name": "基金名称",
-            "holding_shares": "持仓份额",
-            "holding_cost": "持仓成本",
-            "avg_cost": "持仓均价",
-            "current_nav": "当前净值",
-            "market_value": "估值",
-            "floating_pnl": "浮动盈亏",
-        }
-    )
-    st.dataframe(
-        summary_df[["基金代码", "基金名称", "持仓份额", "持仓成本", "持仓均价", "当前净值", "估值", "浮动盈亏"]],
-        use_container_width=True,
-    )
-    bar_df = summary_df[["基金代码", "浮动盈亏"]]
-    st.bar_chart(bar_df, x="基金代码", y="浮动盈亏")
-else:
-    st.info("暂无基金数据。")
+overview = service.get_portfolio_overview()
+k1, k2, k3, k4 = st.columns(4)
+k1.metric("组合总成本", f"{overview['total_cost']:.4f}")
+k2.metric("组合总市值", f"{overview['total_value']:.4f}")
+k3.metric("组合浮动盈亏", f"{overview['total_pnl']:.4f}")
+k4.metric("组合收益率", f"{overview['pnl_ratio'] * 100:.2f}%")
+
+tab1, tab2, tab3 = st.tabs(["基金管理", "交易与图表", "组合总览"])
+with tab1:
+    render_fund_management()
+with tab2:
+    render_trades_and_chart()
+with tab3:
+    st.subheader("多基金持仓对比")
+    all_summaries = service.get_all_position_summaries()
+    if all_summaries:
+        summary_df = pd.DataFrame(all_summaries).rename(
+            columns={
+                "code": "基金代码",
+                "name": "基金名称",
+                "holding_shares": "持仓份额",
+                "holding_cost": "持仓成本",
+                "avg_cost": "持仓均价",
+                "current_nav": "当前净值",
+                "market_value": "估值",
+                "floating_pnl": "浮动盈亏",
+            }
+        )
+        st.dataframe(
+            summary_df[["基金代码", "基金名称", "持仓份额", "持仓成本", "持仓均价", "当前净值", "估值", "浮动盈亏"]],
+            use_container_width=True,
+        )
+        bar_df = summary_df[["基金代码", "浮动盈亏"]]
+        st.bar_chart(bar_df, x="基金代码", y="浮动盈亏")
+    else:
+        st.info("暂无基金数据。")
 

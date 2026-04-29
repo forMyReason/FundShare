@@ -218,6 +218,19 @@ class PortfolioService:
             )
         return sorted(summaries, key=lambda x: x["floating_pnl"], reverse=True)
 
+    def get_portfolio_overview(self) -> dict[str, float]:
+        rows = self.get_all_position_summaries()
+        total_cost = sum(float(r["holding_cost"]) for r in rows)
+        total_value = sum(float(r["market_value"]) for r in rows)
+        total_pnl = total_value - total_cost
+        pnl_ratio = (total_pnl / total_cost) if total_cost > 0 else 0.0
+        return {
+            "total_cost": round(total_cost, 4),
+            "total_value": round(total_value, 4),
+            "total_pnl": round(total_pnl, 4),
+            "pnl_ratio": round(pnl_ratio, 6),
+        }
+
     @staticmethod
     def _validate_trade_inputs(apply_date: str, confirm_date: str, price: float, shares: float) -> None:
         if apply_date > confirm_date:
