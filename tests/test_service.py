@@ -396,6 +396,30 @@ def test_portfolio_overview_realized_pnl(service: PortfolioService) -> None:
     assert overview["realized_pnl"] == 12.0
 
 
+def test_fifo_many_small_sells_remain_consistent(service: PortfolioService) -> None:
+    f = service.add_fund("800001", "FIFO压力", 1.0, "2026-01-01")
+    service.add_buy(f["id"], "2026-01-01", "2026-01-02", 1.0, 100.0)
+    for _ in range(50):
+        service.add_sell(f["id"], "2026-02-01", "2026-02-02", 1.01, 1.0)
+    assert service.get_remaining_shares(f["id"]) == 50.0
+    open_pts = service.get_open_buy_points(f["id"])
+    assert len(open_pts) == 1
+    assert open_pts[0]["remaining_shares"] == 50.0
+
+
+def test_fifo_across_multiple_buys_partial_layers(service: PortfolioService) -> None:
+    f = service.add_fund("800002", "多层FIFO", 1.0, "2026-01-01")
+    for k, sh in enumerate([10, 20, 30], start=1):
+        service.add_buy(f["id"], f"2026-0{k}-01", f"2026-0{k}-02", 1.0 + 0.01 * k, float(sh))
+    service.add_sell(f["id"], "2026-04-01", "2026-04-02", 1.5, 25.0)
+    lots = service.get_open_buy_points(f["id"])
+    assert len(lots) == 2
+    rem = sum(lot["remaining_shares"] for lot in lots)
+    assert rem == 35.0
+    assert abs(lots[0]["remaining_shares"] - 5.0) < 1e-6
+    assert abs(lots[1]["remaining_shares"] - 30.0) < 1e-6
+
+
 def test_auto_fetch_fund_info_with_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     sample_js = """
     var fS_name = "示例基金";
