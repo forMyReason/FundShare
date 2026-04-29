@@ -241,6 +241,20 @@ def test_portfolio_overview_aggregates_totals(service: PortfolioService) -> None
     assert overview["total_value"] == 160.0
     assert overview["total_pnl"] == 10.0
     assert overview["pnl_ratio"] == 0.066667
+    assert overview["buy_amount"] == 150.0
+    assert overview["sell_amount"] == 0.0
+    assert overview["realized_pnl"] == 0.0
+
+
+def test_portfolio_overview_realized_pnl(service: PortfolioService) -> None:
+    f = service.add_fund("740001", "已实现盈亏测试", 1.3, "2026-07-01")
+    service.add_buy(f["id"], "2026-07-02", "2026-07-03", 1.0, 100)  # buy 100
+    service.add_sell(f["id"], "2026-07-04", "2026-07-05", 1.2, 60)   # sell 72
+    overview = service.get_portfolio_overview()
+    assert overview["buy_amount"] == 100.0
+    assert overview["sell_amount"] == 72.0
+    assert overview["total_cost"] == 40.0
+    assert overview["realized_pnl"] == 12.0
 
 
 def test_auto_fetch_fund_info_with_mock(monkeypatch: pytest.MonkeyPatch) -> None:

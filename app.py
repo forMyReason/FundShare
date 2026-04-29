@@ -262,11 +262,14 @@ def render_trades_and_chart() -> None:
 
 
 overview = service.get_portfolio_overview()
-k1, k2, k3, k4 = st.columns(4)
+k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
 k1.metric("组合总成本", f"{overview['total_cost']:.4f}")
 k2.metric("组合总市值", f"{overview['total_value']:.4f}")
 k3.metric("组合浮动盈亏", f"{overview['total_pnl']:.4f}")
 k4.metric("组合收益率", f"{overview['pnl_ratio'] * 100:.2f}%")
+k5.metric("累计买入金额", f"{overview['buy_amount']:.4f}")
+k6.metric("累计卖出金额", f"{overview['sell_amount']:.4f}")
+k7.metric("已实现盈亏", f"{overview['realized_pnl']:.4f}")
 
 tab1, tab2, tab3 = st.tabs(["基金管理", "交易与图表", "组合总览"])
 with tab1:

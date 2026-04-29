@@ -224,11 +224,22 @@ class PortfolioService:
         total_value = sum(float(r["market_value"]) for r in rows)
         total_pnl = total_value - total_cost
         pnl_ratio = (total_pnl / total_cost) if total_cost > 0 else 0.0
+        data = self._load()
+        buy_amount = sum(
+            float(tx["amount"]) for tx in data["transactions"] if tx["tx_type"] == "buy"
+        )
+        sell_amount = sum(
+            float(tx["amount"]) for tx in data["transactions"] if tx["tx_type"] == "sell"
+        )
+        realized_pnl = sell_amount - buy_amount + total_cost
         return {
             "total_cost": round(total_cost, 4),
             "total_value": round(total_value, 4),
             "total_pnl": round(total_pnl, 4),
             "pnl_ratio": round(pnl_ratio, 6),
+            "buy_amount": round(buy_amount, 4),
+            "sell_amount": round(sell_amount, 4),
+            "realized_pnl": round(realized_pnl, 4),
         }
 
     @staticmethod
