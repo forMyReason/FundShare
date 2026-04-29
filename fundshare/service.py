@@ -9,6 +9,7 @@ from typing import Any
 
 from .fund_api import FundApiClient
 from .models import Fund, NavPoint, Transaction
+from .money import q_money, q_ratio
 from .storage import JsonStorage
 
 
@@ -90,7 +91,7 @@ class PortfolioService:
             confirm_date=confirm_date,
             price=float(price),
             shares=float(shares),
-            amount=round(float(price) * float(shares), 4),
+            amount=q_money(float(price) * float(shares)),
         ).to_dict()
         data["transactions"].append(tx)
         self._save(data)
@@ -114,7 +115,7 @@ class PortfolioService:
             confirm_date=confirm_date,
             price=float(price),
             shares=sell_shares,
-            amount=round(float(price) * sell_shares, 4),
+            amount=q_money(float(price) * sell_shares),
         ).to_dict()
         data["transactions"].append(tx)
         self._save(data)
@@ -192,7 +193,7 @@ class PortfolioService:
     def get_remaining_shares(self, fund_id: int) -> float:
         data = self._load()
         self._ensure_fund(data, fund_id)
-        return round(self._total_remaining_shares(data, fund_id), 4)
+        return q_money(self._total_remaining_shares(data, fund_id))
 
     def auto_fetch_fund_info(self, code: str, target_date: str) -> tuple[str, float]:
         return self.api_client.fetch_name_and_nav(self.normalize_fund_code(code), target_date)
@@ -227,12 +228,12 @@ class PortfolioService:
         floating_pnl = market_value - holding_cost
         avg_cost = (holding_cost / holding_shares) if holding_shares > 0 else 0.0
         return {
-            "holding_shares": round(holding_shares, 4),
-            "holding_cost": round(holding_cost, 4),
-            "avg_cost": round(avg_cost, 4),
-            "market_value": round(market_value, 4),
-            "floating_pnl": round(floating_pnl, 4),
-            "current_nav": round(float(fund["current_nav"]), 4),
+            "holding_shares": q_money(holding_shares),
+            "holding_cost": q_money(holding_cost),
+            "avg_cost": q_money(avg_cost),
+            "market_value": q_money(market_value),
+            "floating_pnl": q_money(floating_pnl),
+            "current_nav": q_money(float(fund["current_nav"])),
         }
 
     def get_all_position_summaries(self) -> list[dict[str, Any]]:
@@ -270,7 +271,7 @@ class PortfolioService:
         for r in rows:
             cost = float(r["holding_cost"])
             pnl = float(r["floating_pnl"])
-            ratio = round((pnl / cost) if cost > 0 else 0.0, 6)
+            ratio = q_ratio((pnl / cost) if cost > 0 else 0.0)
             w.writerow(
                 [
                     r["code"],
@@ -348,13 +349,13 @@ class PortfolioService:
         )
         realized_pnl = sell_amount - buy_amount + total_cost
         return {
-            "total_cost": round(total_cost, 4),
-            "total_value": round(total_value, 4),
-            "total_pnl": round(total_pnl, 4),
-            "pnl_ratio": round(pnl_ratio, 6),
-            "buy_amount": round(buy_amount, 4),
-            "sell_amount": round(sell_amount, 4),
-            "realized_pnl": round(realized_pnl, 4),
+            "total_cost": q_money(total_cost),
+            "total_value": q_money(total_value),
+            "total_pnl": q_money(total_pnl),
+            "pnl_ratio": q_ratio(pnl_ratio),
+            "buy_amount": q_money(buy_amount),
+            "sell_amount": q_money(sell_amount),
+            "realized_pnl": q_money(realized_pnl),
         }
 
     @staticmethod
