@@ -829,13 +829,6 @@ def render_trades_and_chart() -> None:
                 "手续费": st.column_config.NumberColumn(format="%.2f"),
             },
         )
-        csv_content = service.export_transactions_csv(fund_id, date_field=date_field)
-        st.download_button(
-            label="导出当前基金交易CSV",
-            data=csv_content,
-            file_name=f"fund_{selected_fund['code']}_transactions.csv",
-            mime="text/csv",
-        )
     else:
         st.caption("当前筛选条件下暂无交易记录。")
 
@@ -850,30 +843,6 @@ def render_trades_and_chart() -> None:
             j1, j2 = st.columns(2)
             with j1:
                 tx_import_text = st.text_area("粘贴 JSON", height=140, key=f"tx_import_text_{fund_id}")
-            with j2:
-                sample_payload = json.dumps(
-                    {
-                        "fund_code": selected_fund["code"],
-                        "transactions": [
-                            {
-                                "tx_type": "buy",
-                                "apply_date": "2026-01-02",
-                                "confirm_date": "2026-01-03",
-                                "price": 1.0,
-                                "shares": 10.0,
-                                "fee": 0.5,
-                            }
-                        ],
-                    },
-                    ensure_ascii=False,
-                    indent=2,
-                )
-                st.download_button(
-                    "下载示例",
-                    sample_payload,
-                    file_name=f"import_sample_{selected_fund['code']}.json",
-                    mime="application/json",
-                )
             if st.button("执行 JSON 导入", type="primary", key=f"tx_import_run_{fund_id}"):
                 if not tx_import_text.strip():
                     st.warning("请先粘贴 JSON。")
@@ -892,18 +861,6 @@ def render_trades_and_chart() -> None:
             with c1:
                 tx_import_csv_text = st.text_area("粘贴 CSV", height=140, key=f"tx_import_csv_{fund_id}")
                 uploaded_csv = st.file_uploader("或上传 .csv", type=["csv"], key=f"tx_upload_csv_{fund_id}")
-            with c2:
-                csv_template = (
-                    "tx_type,apply_date,confirm_date,price,shares,amount,fee\n"
-                    "buy,2026-01-02,2026-01-03,1.0,100.0,100.0,0\n"
-                )
-                st.download_button(
-                    "下载 CSV 模板",
-                    csv_template,
-                    file_name=f"import_template_{selected_fund['code']}.csv",
-                    mime="text/csv",
-                    key=f"tx_csv_tpl_{fund_id}",
-                )
             csv_payload = tx_import_csv_text.strip()
             if uploaded_csv is not None:
                 try:
@@ -1109,12 +1066,6 @@ with tab1:
         )
         bar_df = summary_df[["基金代码", "浮动盈亏"]]
         st.bar_chart(bar_df, x="基金代码", y="浮动盈亏")
-        st.download_button(
-            label="导出组合持仓CSV",
-            data=service.export_portfolio_csv(),
-            file_name="portfolio_positions.csv",
-            mime="text/csv",
-        )
     else:
         st.info("暂无基金数据。")
 with tab2:
