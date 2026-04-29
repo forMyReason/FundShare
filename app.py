@@ -31,7 +31,7 @@ with st.sidebar:
     st.caption("数据目录：" + (_dd if _dd else "默认 `data/`，可用环境变量 `DATA_DIR`"))
     st.divider()
 st.title("个人基金交易记录器")
-st.caption("买入以确认日为准；卖出默认按批次指定抵扣，亦可选 FIFO；净值曲线可叠加买入点与多基对比。")
+st.caption("买入以确认日为准；卖出默认按批次指定抵扣，亦可选 FIFO；净值曲线展示买入点。")
 
 service = PortfolioService()
 
@@ -1040,66 +1040,6 @@ def render_trades_and_chart() -> None:
             xaxis_rangeslider_visible=True,
         )
     st.plotly_chart(fig, use_container_width=True)
-
-    st.divider()
-    st.subheader("多基金净值对比（可选）")
-    code_opts = [f["code"] for f in funds]
-    mc1, mc2 = st.columns([4, 1])
-    with mc1:
-        cmp_pick = st.multiselect(
-            "选择多只基金（区间内首点归一为 100）",
-            options=code_opts,
-            default=[],
-            key="nav_multi_compare",
-        )
-    with mc2:
-        st.write("")  # spacer
-        st.write("")
-        if st.button("加入当前基金", key="nav_cmp_add_current", help="把上方选中的基金加入对比列表"):
-            cur = str(selected_fund["code"])
-            prev = list(st.session_state.get("nav_multi_compare") or [])
-            if cur not in prev:
-                st.session_state["nav_multi_compare"] = prev + [cur]
-                st.rerun()
-    cmp_range = st.radio(
-        "对比图时间范围",
-        ["全部", "近1月", "近3月", "近1年"],
-        horizontal=True,
-        key="nav_cmp_range",
-    )
-    if len(cmp_pick) >= 2:
-        all_pts: list[dict] = []
-        fid_by_code = {f["code"]: f["id"] for f in funds}
-        for c in cmp_pick:
-            all_pts.extend(service.get_nav_points(fid_by_code[c]))
-        w0, w1 = service.nav_chart_date_window(all_pts, cmp_range)
-        fig_m = go.Figure()
-        for c in cmp_pick:
-            fid = fid_by_code[c]
-            pts = service.get_nav_points(fid)
-            filt = service.filter_records_by_date_range(pts, "date", w0, w1)
-            if not filt:
-                continue
-            nd = pd.DataFrame(filt).sort_values("date")
-            b = float(nd["nav"].iloc[0])
-            if b <= 0:
-                continue
-            y = nd["nav"].astype(float) / b * 100.0
-            fn = next(f["name"] for f in funds if f["code"] == c)
-            fig_m.add_trace(go.Scatter(x=nd["date"], y=y, mode="lines", name=f"{c} {fn}"))
-        if fig_m.data:
-            fig_m.update_layout(
-                title="多基金净值对比（首点=100）",
-                xaxis_title="日期",
-                yaxis_title="相对净值",
-                template=plotly_tpl,
-                legend_title="基金",
-                xaxis_rangeslider_visible=True,
-            )
-            st.plotly_chart(fig_m, use_container_width=True)
-        else:
-            st.info("所选基金在范围内暂无净值数据。")
-
 
 tab1, tab2, tab3, tab4 = st.tabs(["组合总览", "基金管理", "交易与净值", "维护"])
 with tab1:
