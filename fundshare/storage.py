@@ -6,8 +6,9 @@ from typing import Any
 
 DEFAULT_DB = {
     "funds": [],
+    "nav_points": [],
     "transactions": [],
-    "next_ids": {"fund": 1, "tx": 1},
+    "next_ids": {"fund": 1, "nav": 1, "tx": 1},
 }
 
 

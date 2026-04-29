@@ -19,6 +19,17 @@ class Fund:
 
 
 @dataclass
+class NavPoint:
+    id: int
+    fund_id: int
+    date: str
+    nav: float
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
 class Transaction:
     id: int
     fund_id: int
