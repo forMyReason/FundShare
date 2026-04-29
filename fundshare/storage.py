@@ -38,6 +38,11 @@ class JsonStorage:
         data["next_ids"].setdefault("fund", self._next_from_items(data["funds"]))
         data["next_ids"].setdefault("tx", self._next_from_items(data["transactions"]))
         data["next_ids"].setdefault("nav", self._next_from_items(data["nav_points"]))
+        for tx in data["transactions"]:
+            legacy_date = tx.get("date", "")
+            tx.setdefault("apply_date", legacy_date)
+            tx.setdefault("confirm_date", legacy_date)
+            tx.pop("date", None)
         return data
 
     @staticmethod

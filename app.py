@@ -35,52 +35,53 @@ def _auto_fill_new_fund() -> None:
     st.session_state["new_fund_fetch_error"] = ""
 
 
+def _auto_fill_trade_price(mode: str, code: str) -> None:
+    date_key = f"{mode}_confirm_date"
+    price_key = f"{mode}_price"
+    target_date = st.session_state.get(date_key, date.today())
+    if not code:
+        return
+    try:
+        _, auto_nav = service.auto_fetch_fund_info(code, target_date.isoformat())
+    except Exception:
+        return
+    st.session_state[price_key] = float(auto_nav)
+
+
 def render_fund_management() -> None:
     st.subheader("1) 基金基础信息管理")
     if "new_fund_code" not in st.session_state:
         st.session_state["new_fund_code"] = ""
     if "new_fund_name" not in st.session_state:
-        st.session_state["new_fund_name"] = ""
+        st.session_state["new_fund_name"] = "-"
     if "new_fund_nav" not in st.session_state:
-        st.session_state["new_fund_nav"] = 1.0
-    if "new_fund_date" not in st.session_state:
-        st.session_state["new_fund_date"] = date.today()
+        st.session_state["new_fund_nav"] = 0.0
 
-    c1, c2, c3, c4, c5 = st.columns([1.2, 1.5, 1.0, 1.1, 1.0])
+    c1, c2 = st.columns([2.0, 1.0])
     st.session_state["new_fund_code"] = c1.text_input(
         "基金代码",
         value=st.session_state["new_fund_code"],
         placeholder="如 161725",
-        on_change=_auto_fill_new_fund,
     )
-    st.session_state["new_fund_name"] = c2.text_input("基金名称", value=st.session_state["new_fund_name"])
-    st.session_state["new_fund_nav"] = c3.number_input(
-        "当前净值", min_value=0.0001, value=float(st.session_state["new_fund_nav"]), step=0.0001, format="%.4f"
-    )
-    st.session_state["new_fund_date"] = c4.date_input(
-        "净值日期", value=st.session_state["new_fund_date"], on_change=_auto_fill_new_fund
-    )
-    if c5.button("手动重新获取", use_container_width=True):
-        _auto_fill_new_fund()
+    add_clicked = c2.button("按代码自动新增基金", use_container_width=True)
 
     error_msg = st.session_state.get("new_fund_fetch_error", "")
     if error_msg:
         st.warning(error_msg)
 
-    if st.button("新增基金"):
+    if add_clicked:
         code = st.session_state["new_fund_code"]
-        name = st.session_state["new_fund_name"]
-        nav = float(st.session_state["new_fund_nav"])
-        nav_date = st.session_state["new_fund_date"]
-        if not code.strip() or not name.strip():
-            st.error("基金代码和名称不能为空。")
+        if not code.strip():
+            st.error("基金代码不能为空。")
         else:
-            service.add_fund(code, name, nav, nav_date.isoformat())
-            st.success("基金已新增。")
-            st.session_state["new_fund_code"] = ""
-            st.session_state["new_fund_name"] = ""
-            st.session_state["new_fund_nav"] = 1.0
-            st.session_state["new_fund_date"] = date.today()
+            try:
+                name, nav = service.auto_fetch_fund_info(code, date.today().isoformat())
+            except Exception as e:  # noqa: BLE001
+                st.error(f"新增失败：{e}")
+            else:
+                service.add_fund(code, name, nav, date.today().isoformat())
+                st.success(f"基金已新增：{name}，当前净值 {nav:.4f}")
+                st.session_state["new_fund_code"] = ""
 
     funds = service.list_funds()
     if not funds:
@@ -111,31 +112,44 @@ def render_trades_and_chart() -> None:
     options = {_format_fund_label(f): f["id"] for f in funds}
     selected_label = st.selectbox("选择基金", list(options.keys()))
     fund_id = options[selected_label]
+    selected_fund = next(f for f in funds if f["id"] == fund_id)
 
     t1, t2 = st.columns(2)
     with t1:
         with st.form("buy_form", clear_on_submit=True):
             st.markdown("**买入**")
-            d = st.date_input("买入日期", value=date.today(), key="buy_date")
-            price = st.number_input("买入净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f")
+            apply_d = st.date_input("买入申请日", value=date.today(), key="buy_apply_date")
+            confirm_d = st.date_input("买入确认日", value=date.today(), key="buy_confirm_date")
+            if st.form_submit_button("按确认日自动带入净值"):
+                _auto_fill_trade_price("buy", selected_fund["code"])
+                st.rerun()
+            price = st.number_input(
+                "买入确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="buy_price"
+            )
             shares = st.number_input("买入份额", min_value=0.0001, value=100.0, step=1.0, format="%.4f")
             amount = round(price * shares, 4)
             st.write(f"自动计算金额: **{amount}**")
             submitted = st.form_submit_button("记录买入")
             if submitted:
-                service.add_buy(fund_id, d.isoformat(), price, shares)
+                service.add_buy(fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, shares)
                 st.success("买入记录已保存。")
 
     with t2:
         with st.form("sell_form", clear_on_submit=True):
             st.markdown("**卖出（FIFO）**")
-            d = st.date_input("卖出日期", value=date.today(), key="sell_date")
-            price = st.number_input("卖出净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="sell_price")
+            apply_d = st.date_input("卖出申请日", value=date.today(), key="sell_apply_date")
+            confirm_d = st.date_input("卖出确认日", value=date.today(), key="sell_confirm_date")
+            if st.form_submit_button("按确认日自动带入净值", type="secondary"):
+                _auto_fill_trade_price("sell", selected_fund["code"])
+                st.rerun()
+            price = st.number_input(
+                "卖出确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="sell_price"
+            )
             shares = st.number_input("卖出份额", min_value=0.0001, value=100.0, step=1.0, format="%.4f", key="sell_shares")
             submitted = st.form_submit_button("记录卖出")
             if submitted:
                 try:
-                    service.add_sell(fund_id, d.isoformat(), price, shares)
+                    service.add_sell(fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, shares)
                 except ValueError as e:
                     st.error(str(e))
                 else:
@@ -147,14 +161,15 @@ def render_trades_and_chart() -> None:
         tx_df = tx_df.rename(
             columns={
                 "tx_type": "交易类型",
-                "date": "日期",
+                "apply_date": "申请日",
+                "confirm_date": "确认日",
                 "price": "价格",
                 "shares": "份额",
                 "amount": "金额",
             }
         )
         st.markdown("**交易记录**")
-        st.dataframe(tx_df[["交易类型", "日期", "价格", "份额", "金额"]], use_container_width=True)
+        st.dataframe(tx_df[["交易类型", "申请日", "确认日", "价格", "份额", "金额"]], use_container_width=True)
 
     nav_points = service.get_nav_points(fund_id)
     if not nav_points:

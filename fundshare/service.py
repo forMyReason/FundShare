@@ -65,14 +65,17 @@ class PortfolioService:
         )
         self._save(data)
 
-    def add_buy(self, fund_id: int, tx_date: str, price: float, shares: float) -> dict[str, Any]:
+    def add_buy(
+        self, fund_id: int, apply_date: str, confirm_date: str, price: float, shares: float
+    ) -> dict[str, Any]:
         data = self._load()
         self._ensure_fund(data, fund_id)
         tx = Transaction(
             id=self._next_id(data, "tx"),
             fund_id=fund_id,
             tx_type="buy",
-            date=tx_date,
+            apply_date=apply_date,
+            confirm_date=confirm_date,
             price=float(price),
             shares=float(shares),
             amount=round(float(price) * float(shares), 4),
@@ -81,7 +84,9 @@ class PortfolioService:
         self._save(data)
         return tx
 
-    def add_sell(self, fund_id: int, tx_date: str, price: float, shares: float) -> dict[str, Any]:
+    def add_sell(
+        self, fund_id: int, apply_date: str, confirm_date: str, price: float, shares: float
+    ) -> dict[str, Any]:
         data = self._load()
         self._ensure_fund(data, fund_id)
         sell_shares = float(shares)
@@ -92,7 +97,8 @@ class PortfolioService:
             id=self._next_id(data, "tx"),
             fund_id=fund_id,
             tx_type="sell",
-            date=tx_date,
+            apply_date=apply_date,
+            confirm_date=confirm_date,
             price=float(price),
             shares=sell_shares,
             amount=round(float(price) * sell_shares, 4),
@@ -109,7 +115,7 @@ class PortfolioService:
     def get_transactions(self, fund_id: int) -> list[dict[str, Any]]:
         data = self._load()
         txs = [tx for tx in data["transactions"] if tx["fund_id"] == fund_id]
-        return sorted(txs, key=lambda x: (x["date"], x["id"]))
+        return sorted(txs, key=lambda x: (x["confirm_date"], x["id"]))
 
     def get_open_buy_points(self, fund_id: int) -> list[dict[str, Any]]:
         buys = self.get_transactions(fund_id)
@@ -119,7 +125,7 @@ class PortfolioService:
                 lots.append(
                     {
                         "buy_id": tx["id"],
-                        "date": tx["date"],
+                        "date": tx["confirm_date"],
                         "price": tx["price"],
                         "original_shares": tx["shares"],
                         "remaining_shares": tx["shares"],

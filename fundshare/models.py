@@ -34,7 +34,8 @@ class Transaction:
     id: int
     fund_id: int
     tx_type: TxType
-    date: str
+    apply_date: str
+    confirm_date: str
     price: float
     shares: float
     amount: float
