@@ -24,6 +24,23 @@ class FundApiClient:
         nav = self._extract_nav_for_date(js_text, target_date)
         return name, nav
 
+    def fetch_nav_trend(self, code: str) -> list[dict[str, Any]]:
+        code = code.strip()
+        if not code:
+            raise ValueError("基金代码不能为空")
+        js_text = self._fetch_fund_js(code)
+        trend = self._extract_nav_trend(js_text)
+        rows: list[dict[str, Any]] = []
+        for item in trend:
+            rows.append(
+                {
+                    "date": datetime.fromtimestamp(item["x"] / 1000).date().isoformat(),
+                    "nav": float(item["y"]),
+                }
+            )
+        rows.sort(key=lambda r: r["date"])
+        return rows
+
     def _fetch_fund_js(self, code: str) -> str:
         now = time.monotonic()
         hit = self._js_cache.get(code)
@@ -55,12 +72,7 @@ class FundApiClient:
 
     @staticmethod
     def _extract_nav_for_date(js_text: str, target_date: str) -> float:
-        m = re.search(r"Data_netWorthTrend\s*=\s*(\[[\s\S]*?\]);", js_text)
-        if not m:
-            raise ValueError("未查询到净值走势数据")
-        trend: list[dict[str, Any]] = json.loads(m.group(1))
-        if not trend:
-            raise ValueError("净值走势数据为空")
+        trend = FundApiClient._extract_nav_trend(js_text)
 
         target = datetime.strptime(target_date, "%Y-%m-%d").date()
         candidate = None
@@ -72,4 +84,14 @@ class FundApiClient:
         if candidate is None:
             raise ValueError("所选日期之前没有可用净值数据")
         return candidate[1]
+
+    @staticmethod
+    def _extract_nav_trend(js_text: str) -> list[dict[str, Any]]:
+        m = re.search(r"Data_netWorthTrend\s*=\s*(\[[\s\S]*?\]);", js_text)
+        if not m:
+            raise ValueError("未查询到净值走势数据")
+        trend: list[dict[str, Any]] = json.loads(m.group(1))
+        if not trend:
+            raise ValueError("净值走势数据为空")
+        return trend
 

@@ -91,6 +91,21 @@ def _build_holding_pnl_series(nav_points: list[dict], summary: dict) -> pd.DataF
     return s
 
 
+def _filter_nav_by_range(df: pd.DataFrame, preset: str) -> pd.DataFrame:
+    if df.empty or preset == "全部":
+        return df
+    end_ts = pd.to_datetime(df["date"]).max()
+    months_map = {"近3月": 3, "近6月": 6, "近1年": 12, "近3年": 36, "近5年": 60}
+    m = months_map.get(preset)
+    if m is None:
+        return df
+    start_ts = end_ts - pd.DateOffset(months=m)
+    d = df.copy()
+    d["date_ts"] = pd.to_datetime(d["date"])
+    out = d[d["date_ts"] >= start_ts].drop(columns=["date_ts"])
+    return out if not out.empty else df.tail(min(len(df), 90))
+
+
 def render_fund_management() -> None:
     st.subheader("当前持有基金总览")
     funds = service.list_funds()
@@ -170,22 +185,83 @@ def render_fund_management() -> None:
             k5.metric("累计盈亏", f"{cum_pnl:.4f}")
 
             nav_points = service.get_nav_points(f["id"])
+            try:
+                remote_nav_points = service.api_client.fetch_nav_trend(f["code"])
+            except Exception:  # noqa: BLE001
+                remote_nav_points = []
+            if remote_nav_points:
+                nav_points = remote_nav_points
             if nav_points:
                 nav_df = pd.DataFrame(nav_points).sort_values("date")
+                period = st.radio(
+                    "时间段",
+                    ["近3月", "近6月", "近1年", "近3年", "近5年", "全部"],
+                    horizontal=True,
+                    index=2,
+                    key=f"fund_perf_period_{f['id']}",
+                )
+                nav_df = _filter_nav_by_range(nav_df, period)
+                base_nav = float(nav_df["nav"].iloc[0])
+                nav_df["perf_pct"] = (nav_df["nav"].astype(float) / base_nav - 1.0) * 100.0
+                c_opt1, c_opt2 = st.columns(2)
+                show_trade_markers = c_opt1.checkbox(
+                    "显示买卖点", value=True, key=f"fund_perf_markers_{f['id']}"
+                )
+                show_trade_labels = c_opt2.checkbox(
+                    "显示点位标签", value=False, key=f"fund_perf_marker_labels_{f['id']}"
+                )
                 fig_nav = go.Figure()
                 fig_nav.add_trace(
                     go.Scatter(
                         x=nav_df["date"],
-                        y=nav_df["nav"],
+                        y=nav_df["perf_pct"],
                         mode="lines",
-                        name="业绩走势(净值)",
+                        name="本基金",
                         line={"width": 2},
                     )
                 )
+                buy_tx = [tx for tx in txs if tx["tx_type"] == "buy"]
+                sell_tx = [tx for tx in txs if tx["tx_type"] == "sell"]
+                if show_trade_markers and buy_tx:
+                    buy_df = pd.DataFrame(buy_tx)
+                    buy_text = (
+                        buy_df["shares"].apply(lambda v: f"买入 {float(v):.2f}份")
+                        if show_trade_labels
+                        else None
+                    )
+                    fig_nav.add_trace(
+                        go.Scatter(
+                            x=buy_df["confirm_date"],
+                            y=(buy_df["price"].astype(float) / base_nav - 1.0) * 100.0,
+                            mode="markers",
+                            name="买入点",
+                            marker={"size": 8, "color": "#e74c3c", "symbol": "circle"},
+                            text=buy_text,
+                            textposition="top center",
+                        )
+                    )
+                if show_trade_markers and sell_tx:
+                    sell_df = pd.DataFrame(sell_tx)
+                    sell_text = (
+                        sell_df["shares"].apply(lambda v: f"卖出 {float(v):.2f}份")
+                        if show_trade_labels
+                        else None
+                    )
+                    fig_nav.add_trace(
+                        go.Scatter(
+                            x=sell_df["confirm_date"],
+                            y=(sell_df["price"].astype(float) / base_nav - 1.0) * 100.0,
+                            mode="markers",
+                            name="卖出点",
+                            marker={"size": 8, "color": "#2ecc71", "symbol": "diamond"},
+                            text=sell_text,
+                            textposition="bottom center",
+                        )
+                    )
                 fig_nav.update_layout(
                     title="业绩走势",
                     xaxis_title="日期",
-                    yaxis_title="净值",
+                    yaxis_title="涨跌幅(%)",
                     template=plotly_tpl,
                     xaxis_rangeslider_visible=True,
                 )

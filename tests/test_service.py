@@ -672,3 +672,28 @@ def test_fund_api_http_error_propagates(monkeypatch: pytest.MonkeyPatch) -> None
     with pytest.raises(requests.HTTPError):
         client.fetch_name_and_nav("000001", "2024-04-01")
 
+
+def test_fund_api_fetch_nav_trend(monkeypatch: pytest.MonkeyPatch) -> None:
+    body = (
+        'var fS_name = "示例基金"; var Data_netWorthTrend = '
+        '[{"x":1711900800000,"y":1.2345},{"x":1711987200000,"y":1.3}];'
+    )
+
+    def _get(*_a: object, **_kw: object) -> object:
+        class R:
+            text = body
+
+            @staticmethod
+            def raise_for_status() -> None:
+                return None
+
+        return R()
+
+    monkeypatch.setattr(requests, "get", _get)
+    client = FundApiClient()
+    trend = client.fetch_nav_trend("000001")
+    assert len(trend) == 2
+    assert trend[0]["date"] == "2024-04-01"
+    assert trend[0]["nav"] == 1.2345
+    assert trend[1]["date"] == "2024-04-02"
+
