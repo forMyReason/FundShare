@@ -139,6 +139,12 @@ def _sample_label_text(series: pd.Series, max_labels: int = 8) -> list[str | Non
     return out
 
 
+def _left_align(df: pd.DataFrame) -> pd.io.formats.style.Styler:
+    return df.style.set_properties(**{"text-align": "left"}).set_table_styles(
+        [{"selector": "th", "props": [("text-align", "left")]}]
+    )
+
+
 def _buy_lot_status_from_transactions(txs: list[dict]) -> list[dict]:
     buy_rows = [
         {
@@ -235,7 +241,7 @@ def render_fund_management() -> None:
         ]
     ).sort_values("持有收益", ascending=False)
     st.dataframe(
-        overview_df,
+        _left_align(overview_df),
         use_container_width=True,
         hide_index=True,
         column_config={"持有收益率": st.column_config.NumberColumn(format="%.2f%%")},
@@ -267,7 +273,8 @@ def render_fund_management() -> None:
                 lot_df["remaining_cost"] = lot_df["remaining_shares"].astype(float) * lot_df["price"].astype(float)
                 st.markdown("**买入批次分布（lot）**")
                 st.dataframe(
-                    lot_df.rename(
+                    _left_align(
+                        lot_df.rename(
                         columns={
                             "buy_tx_id": "买入ID",
                             "date": "买入日",
@@ -277,7 +284,8 @@ def render_fund_management() -> None:
                             "remaining_shares": "剩余份额",
                             "remaining_cost": "剩余成本",
                         }
-                    )[["买入ID", "买入日", "买入价", "原始份额", "已卖份额", "剩余份额", "剩余成本"]],
+                    )[["买入ID", "买入日", "买入价", "原始份额", "已卖份额", "剩余份额", "剩余成本"]]
+                    ),
                     use_container_width=True,
                     hide_index=True,
                     height=min(260, 52 + len(lot_df) * 34),
@@ -412,7 +420,8 @@ def render_fund_management() -> None:
                     tx_df["fee"] = 0.0
                 st.markdown("**最近交易摘要（最近8笔）**")
                 st.dataframe(
-                    tx_df.rename(
+                    _left_align(
+                        tx_df.rename(
                         columns={
                             "tx_type": "类型",
                             "apply_date": "申请日",
@@ -422,7 +431,8 @@ def render_fund_management() -> None:
                             "amount": "金额",
                             "fee": "手续费",
                         }
-                    )[["类型", "申请日", "确认日", "价格", "份额", "金额", "手续费"]].head(8),
+                    )[["类型", "申请日", "确认日", "价格", "份额", "金额", "手续费"]].head(8)
+                    ),
                     use_container_width=True,
                     hide_index=True,
                     height=min(300, 52 + min(len(tx_df), 8) * 36),
@@ -482,7 +492,7 @@ def render_maintenance() -> None:
         ]
     )
     st.dataframe(
-        maint_df,
+        _left_align(maint_df),
         use_container_width=True,
         hide_index=True,
         height=min(320, 52 + len(funds) * 36),
@@ -546,7 +556,7 @@ def render_maintenance() -> None:
                 }
             )
             st.dataframe(
-                tx_preview[["ID", "类型", "申请日", "确认日", "价格", "份额", "金额", "手续费"]],
+                _left_align(tx_preview[["ID", "类型", "申请日", "确认日", "价格", "份额", "金额", "手续费"]]),
                 use_container_width=True,
                 hide_index=True,
                 height=min(260, 52 + len(tx_preview) * 34),
@@ -849,7 +859,7 @@ def render_trades_and_chart() -> None:
             }
         )
         st.dataframe(
-            tx_df[["交易类型", "确认日", "价格", "份额", "金额", "手续费"]],
+            _left_align(tx_df[["交易类型", "确认日", "价格", "份额", "金额", "手续费"]]),
             use_container_width=True,
             hide_index=True,
             height=min(400, 52 + len(transactions) * 36),
@@ -1165,7 +1175,8 @@ with tab1:
         )
         summary_df["简易年化"] = summary_df["简易年化"].apply(lambda r: float(r) * 100.0)
         st.dataframe(
-            summary_df[
+            _left_align(
+                summary_df[
                 [
                     "基金代码",
                     "基金名称",
@@ -1179,7 +1190,8 @@ with tab1:
                     "最早买入天数",
                     "简易年化",
                 ]
-            ],
+            ]
+            ),
             use_container_width=True,
             hide_index=True,
         )
@@ -1191,7 +1203,7 @@ with tab1:
         rank_df = rank_df.sort_values("收益率", ascending=False)
         st.subheader("收益率排行（按持仓成本口径）")
         st.dataframe(
-            rank_df[["基金代码", "基金名称", "收益率", "浮动盈亏", "持仓成本"]],
+            _left_align(rank_df[["基金代码", "基金名称", "收益率", "浮动盈亏", "持仓成本"]]),
             use_container_width=True,
             hide_index=True,
         )
