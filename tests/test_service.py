@@ -231,6 +231,27 @@ def test_get_remaining_shares(service: PortfolioService) -> None:
     assert service.get_remaining_shares(fund["id"]) == 40.0
 
 
+def test_filter_transactions_by_date_range(service: PortfolioService) -> None:
+    fund = service.add_fund("750001", "日期筛选测试", 1.0, "2026-07-01")
+    service.add_buy(fund["id"], "2026-07-02", "2026-07-03", 1.0, 10)
+    service.add_sell(fund["id"], "2026-07-04", "2026-07-05", 1.1, 5)
+    service.add_buy(fund["id"], "2026-07-06", "2026-07-07", 1.2, 10)
+    rows = service.filter_transactions_by_date_range(
+        fund["id"], "2026-07-04", "2026-07-07", date_field="confirm_date"
+    )
+    assert len(rows) == 2
+    assert rows[0]["tx_type"] == "sell"
+    assert rows[1]["tx_type"] == "buy"
+
+
+def test_filter_transactions_date_range_validation(service: PortfolioService) -> None:
+    fund = service.add_fund("750002", "日期范围校验", 1.0, "2026-07-01")
+    with pytest.raises(ValueError):
+        service.filter_transactions_by_date_range(
+            fund["id"], "2026-07-10", "2026-07-01", date_field="confirm_date"
+        )
+
+
 def test_portfolio_overview_aggregates_totals(service: PortfolioService) -> None:
     a = service.add_fund("730001", "组合A", 1.2, "2026-07-01")
     b = service.add_fund("730002", "组合B", 0.8, "2026-07-01")

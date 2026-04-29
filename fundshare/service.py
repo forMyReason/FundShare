@@ -131,6 +131,18 @@ class PortfolioService:
             raise ValueError("date_field must be confirm_date or apply_date")
         return sorted(txs, key=lambda x: (x[date_field], x["id"]))
 
+    def filter_transactions_by_date_range(
+        self,
+        fund_id: int,
+        start_date: str,
+        end_date: str,
+        date_field: str = "confirm_date",
+    ) -> list[dict[str, Any]]:
+        if start_date > end_date:
+            raise ValueError("开始日期不能晚于结束日期")
+        txs = self.get_transactions(fund_id, date_field=date_field)
+        return [tx for tx in txs if start_date <= tx[date_field] <= end_date]
+
     def get_open_buy_points(self, fund_id: int, date_field: str = "confirm_date") -> list[dict[str, Any]]:
         buys = self.get_transactions(fund_id, date_field=date_field)
         lots: list[dict[str, Any]] = []

@@ -199,7 +199,19 @@ def render_trades_and_chart() -> None:
                 else:
                     st.success("卖出记录已保存。")
 
-    transactions = service.get_transactions(fund_id, date_field=date_field)
+    filter_c1, filter_c2 = st.columns(2)
+    tx_start = filter_c1.date_input("交易筛选开始日期", value=date.today().replace(day=1), key="tx_filter_start")
+    tx_end = filter_c2.date_input("交易筛选结束日期", value=date.today(), key="tx_filter_end")
+    if tx_start > tx_end:
+        st.warning("开始日期不能晚于结束日期，将显示全部交易。")
+        transactions = service.get_transactions(fund_id, date_field=date_field)
+    else:
+        transactions = service.filter_transactions_by_date_range(
+            fund_id,
+            tx_start.isoformat(),
+            tx_end.isoformat(),
+            date_field=date_field,
+        )
     if transactions:
         tx_df = pd.DataFrame(transactions)
         tx_df = tx_df.rename(
