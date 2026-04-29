@@ -1,0 +1,10 @@
+.git
+.cursor
+.pytest_cache
+__pycache__
+*.pyc
+.coverage
+htmlcov
+.mypy_cache
+.ruff_cache
+data

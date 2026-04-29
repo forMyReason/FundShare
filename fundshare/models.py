@@ -39,6 +39,7 @@ class Transaction:
     price: float
     shares: float
     amount: float
+    fee: float
 
     def to_dict(self) -> dict:
         return asdict(self)

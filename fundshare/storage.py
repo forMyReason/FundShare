@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
@@ -14,11 +15,20 @@ DEFAULT_DB = {
 }
 
 
+def default_store_path() -> str:
+    """Primary DB file; if env ``DATA_DIR`` is set, use ``<DATA_DIR>/store.json``."""
+    raw = (os.environ.get("DATA_DIR") or "").strip()
+    if not raw:
+        return "data/store.json"
+    return str(Path(raw).expanduser() / "store.json")
+
+
 class JsonStorage:
     MAX_ROTATED_BACKUPS = 10
 
-    def __init__(self, db_path: str = "data/store.json") -> None:
-        self.db_path = Path(db_path)
+    def __init__(self, db_path: str | None = None) -> None:
+        path_str = db_path if db_path is not None else default_store_path()
+        self.db_path = Path(path_str)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.db_path.exists():
             self.save(deepcopy(DEFAULT_DB))
@@ -60,6 +70,7 @@ class JsonStorage:
             tx.setdefault("apply_date", legacy_date)
             tx.setdefault("confirm_date", legacy_date)
             tx.pop("date", None)
+            tx.setdefault("fee", 0.0)
         return data
 
     @staticmethod

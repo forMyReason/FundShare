@@ -10,8 +10,10 @@ import requests
 
 
 class FundApiClient:
-    def __init__(self, timeout: float = 8.0) -> None:
+    def __init__(self, timeout: float = 8.0, js_cache_ttl_sec: float = 120.0) -> None:
         self.timeout = timeout
+        self.js_cache_ttl_sec = js_cache_ttl_sec
+        self._js_cache: dict[str, tuple[float, str]] = {}
 
     def fetch_name_and_nav(self, code: str, target_date: str) -> tuple[str, float]:
         code = code.strip()
@@ -23,13 +25,19 @@ class FundApiClient:
         return name, nav
 
     def _fetch_fund_js(self, code: str) -> str:
+        now = time.monotonic()
+        hit = self._js_cache.get(code)
+        if hit is not None and (now - hit[0]) < self.js_cache_ttl_sec:
+            return hit[1]
         url = f"http://fund.eastmoney.com/pingzhongdata/{code}.js"
         last_exc: requests.RequestException | None = None
         for attempt in range(3):
             try:
                 resp = requests.get(url, timeout=self.timeout)
                 resp.raise_for_status()
-                return resp.text
+                text = resp.text
+                self._js_cache[code] = (now, text)
+                return text
             except requests.RequestException as e:
                 last_exc = e
                 if attempt < 2:

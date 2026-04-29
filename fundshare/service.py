@@ -14,6 +14,12 @@ from .money import q_money, q_ratio
 from .storage import JsonStorage
 
 
+def _normalize_csv_header(name: str | None) -> str:
+    if name is None:
+        return ""
+    return str(name).strip().lower().lstrip("\ufeff")
+
+
 class PortfolioService:
     def __init__(self, storage: JsonStorage | None = None, api_client: FundApiClient | None = None) -> None:
         self.storage = storage or JsonStorage()
@@ -89,11 +95,17 @@ class PortfolioService:
         self._save(data)
 
     def add_buy(
-        self, fund_id: int, apply_date: str, confirm_date: str, price: float, shares: float
+        self,
+        fund_id: int,
+        apply_date: str,
+        confirm_date: str,
+        price: float,
+        shares: float,
+        fee: float = 0.0,
     ) -> dict[str, Any]:
         data = self._load()
         self._ensure_fund(data, fund_id)
-        self._validate_trade_inputs(apply_date, confirm_date, price, shares)
+        self._validate_trade_inputs(apply_date, confirm_date, price, shares, fee)
         tx = Transaction(
             id=self._next_id(data, "tx"),
             fund_id=fund_id,
@@ -103,17 +115,24 @@ class PortfolioService:
             price=float(price),
             shares=float(shares),
             amount=q_money(float(price) * float(shares)),
+            fee=q_money(float(fee)),
         ).to_dict()
         data["transactions"].append(tx)
         self._save(data)
         return tx
 
     def add_sell(
-        self, fund_id: int, apply_date: str, confirm_date: str, price: float, shares: float
+        self,
+        fund_id: int,
+        apply_date: str,
+        confirm_date: str,
+        price: float,
+        shares: float,
+        fee: float = 0.0,
     ) -> dict[str, Any]:
         data = self._load()
         self._ensure_fund(data, fund_id)
-        self._validate_trade_inputs(apply_date, confirm_date, price, shares)
+        self._validate_trade_inputs(apply_date, confirm_date, price, shares, fee)
         sell_shares = float(shares)
         remain = self._total_remaining_shares(data, fund_id)
         if sell_shares > remain + 1e-9:
@@ -127,6 +146,7 @@ class PortfolioService:
             price=float(price),
             shares=sell_shares,
             amount=q_money(float(price) * sell_shares),
+            fee=q_money(float(fee)),
         ).to_dict()
         data["transactions"].append(tx)
         self._save(data)
@@ -192,6 +212,25 @@ class PortfolioService:
                     remaining_sell -= consumed
         return [lot for lot in lots if lot["remaining_shares"] > 1e-9]
 
+    @staticmethod
+    def _holding_days_for_open_lots(
+        open_lots: list[dict[str, Any]], as_of: date
+    ) -> tuple[float, float]:
+        """Shares-weighted average days held for open lots, and days since earliest open lot date."""
+        total_sh = sum(float(lot["remaining_shares"]) for lot in open_lots)
+        if total_sh <= 1e-9:
+            return 0.0, 0.0
+        weighted = 0.0
+        earliest: date | None = None
+        for lot in open_lots:
+            d0 = datetime.strptime(str(lot["date"]), "%Y-%m-%d").date()
+            days = max(0, (as_of - d0).days)
+            weighted += float(lot["remaining_shares"]) * float(days)
+            if earliest is None or d0 < earliest:
+                earliest = d0
+        first_age = max(0, (as_of - earliest).days) if earliest is not None else 0
+        return weighted / total_sh, float(first_age)
+
     def _ensure_fund(self, data: dict[str, Any], fund_id: int) -> None:
         if not any(f["id"] == fund_id for f in data["funds"]):
             raise DomainError("基金不存在")
@@ -220,24 +259,42 @@ class PortfolioService:
 
     def export_transactions_csv(self, fund_id: int, date_field: str = "confirm_date") -> str:
         txs = self.get_transactions(fund_id, date_field=date_field)
-        output = StringIO()
-        output.write("tx_type,apply_date,confirm_date,price,shares,amount\n")
+        buf = StringIO()
+        w = csv.writer(buf)
+        w.writerow(["tx_type", "apply_date", "confirm_date", "price", "shares", "amount", "fee"])
         for tx in txs:
-            output.write(
-                f"{tx['tx_type']},{tx['apply_date']},{tx['confirm_date']},{tx['price']},{tx['shares']},{tx['amount']}\n"
+            w.writerow(
+                [
+                    tx["tx_type"],
+                    tx["apply_date"],
+                    tx["confirm_date"],
+                    tx["price"],
+                    tx["shares"],
+                    tx["amount"],
+                    tx.get("fee", 0.0),
+                ]
             )
-        return output.getvalue()
+        return buf.getvalue()
 
-    def get_position_summary(self, fund_id: int) -> dict[str, float]:
+    def get_position_summary(self, fund_id: int, date_field: str = "confirm_date") -> dict[str, Any]:
         data = self._load()
         self._ensure_fund(data, fund_id)
+        if date_field not in {"confirm_date", "apply_date"}:
+            raise DomainError("date_field must be confirm_date or apply_date")
         fund = next(f for f in data["funds"] if f["id"] == fund_id)
-        open_lots = self.get_open_buy_points(fund_id, date_field="confirm_date")
+        open_lots = self.get_open_buy_points(fund_id, date_field=date_field)
         holding_shares = sum(lot["remaining_shares"] for lot in open_lots)
         holding_cost = sum(lot["remaining_shares"] * lot["price"] for lot in open_lots)
         market_value = holding_shares * float(fund["current_nav"])
         floating_pnl = market_value - holding_cost
         avg_cost = (holding_cost / holding_shares) if holding_shares > 0 else 0.0
+        avg_days, first_lot_days = self._holding_days_for_open_lots(open_lots, date.today())
+        avg_days_r = round(avg_days, 1)
+        first_lot_r = round(first_lot_days, 1)
+        if holding_cost > 1e-9 and avg_days > 1e-9:
+            annual_simple = q_ratio((floating_pnl / holding_cost) * (365.0 / avg_days))
+        else:
+            annual_simple = 0.0
         return {
             "holding_shares": q_money(holding_shares),
             "holding_cost": q_money(holding_cost),
@@ -245,13 +302,16 @@ class PortfolioService:
             "market_value": q_money(market_value),
             "floating_pnl": q_money(floating_pnl),
             "current_nav": q_money(float(fund["current_nav"])),
+            "avg_holding_days": avg_days_r,
+            "first_lot_age_days": first_lot_r,
+            "annualized_simple_ratio": annual_simple,
         }
 
-    def get_all_position_summaries(self) -> list[dict[str, Any]]:
+    def get_all_position_summaries(self, date_field: str = "confirm_date") -> list[dict[str, Any]]:
         funds = self.list_funds()
         summaries: list[dict[str, Any]] = []
         for fund in funds:
-            summary = self.get_position_summary(fund["id"])
+            summary = self.get_position_summary(fund["id"], date_field=date_field)
             summaries.append(
                 {
                     "fund_id": fund["id"],
@@ -277,6 +337,9 @@ class PortfolioService:
                 "market_value",
                 "floating_pnl",
                 "pnl_ratio",
+                "avg_holding_days",
+                "first_lot_age_days",
+                "annualized_simple_ratio",
             ]
         )
         for r in rows:
@@ -294,25 +357,35 @@ class PortfolioService:
                     r["market_value"],
                     r["floating_pnl"],
                     ratio,
+                    r["avg_holding_days"],
+                    r["first_lot_age_days"],
+                    r["annualized_simple_ratio"],
                 ]
             )
         return buf.getvalue()
 
     @staticmethod
-    def _parse_import_tx_row(row: dict[str, Any]) -> tuple[str, str, str, float, float]:
+    def _parse_import_tx_row(row: dict[str, Any]) -> tuple[str, str, str, float, float, float]:
         try:
             tx_type = str(row["tx_type"]).strip().lower()
             apply_date = str(row["apply_date"]).strip()
             confirm_date = str(row["confirm_date"]).strip()
             price = float(row["price"])
             shares = float(row["shares"])
+            raw_fee = row.get("fee")
+            if raw_fee is None or (isinstance(raw_fee, str) and not str(raw_fee).strip()):
+                fee = 0.0
+            else:
+                fee = float(raw_fee)
         except (KeyError, TypeError, ValueError) as e:
             raise DomainError(f"交易记录字段不完整或类型错误: {e}") from e
         if tx_type not in ("buy", "sell"):
             raise DomainError("tx_type 必须是 buy 或 sell")
         datetime.strptime(apply_date, "%Y-%m-%d")
         datetime.strptime(confirm_date, "%Y-%m-%d")
-        return tx_type, apply_date, confirm_date, price, shares
+        if fee < 0:
+            raise DomainError("手续费不能为负数")
+        return tx_type, apply_date, confirm_date, price, shares, fee
 
     def import_transactions_json(self, json_text: str) -> int:
         try:
@@ -337,12 +410,62 @@ class PortfolioService:
         for row in rows:
             if not isinstance(row, dict):
                 raise DomainError("transactions 中每项必须是对象")
-            tx_type, apply_date, confirm_date, price, shares = self._parse_import_tx_row(row)
+            tx_type, apply_date, confirm_date, price, shares, fee = self._parse_import_tx_row(row)
             if tx_type == "buy":
-                self.add_buy(fund_id, apply_date, confirm_date, price, shares)
+                self.add_buy(fund_id, apply_date, confirm_date, price, shares, fee)
             else:
-                self.add_sell(fund_id, apply_date, confirm_date, price, shares)
+                self.add_sell(fund_id, apply_date, confirm_date, price, shares, fee)
             count += 1
+        return count
+
+    def import_transactions_csv(self, csv_text: str, fund_code: str) -> int:
+        data = self._load()
+        normalized = self.normalize_fund_code(str(fund_code).strip())
+        fund = next((f for f in data["funds"] if f["code"] == normalized), None)
+        if not fund:
+            raise DomainError("基金不存在，请先添加该基金")
+        fund_id = int(fund["id"])
+        stream = StringIO(csv_text.strip())
+        reader = csv.DictReader(stream)
+        if not reader.fieldnames:
+            raise DomainError("CSV 无表头或内容为空")
+        required = {"tx_type", "apply_date", "confirm_date", "price", "shares"}
+        rows_iter = list(reader)
+        if not rows_iter:
+            raise DomainError("CSV 无数据行")
+        first_keys = {_normalize_csv_header(h) for h in reader.fieldnames if h is not None and str(h).strip()}
+        missing = required - first_keys
+        if missing:
+            raise DomainError(f"CSV 缺少列: {', '.join(sorted(missing))}")
+        count = 0
+        for raw in rows_iter:
+            row: dict[str, Any] = {}
+            for k, v in raw.items():
+                if k is None:
+                    continue
+                nk = _normalize_csv_header(k)
+                if not nk:
+                    continue
+                row[nk] = v.strip() if isinstance(v, str) else v
+            if not any(str(row.get(c, "") or "").strip() for c in required):
+                continue
+            tx_type, apply_date, confirm_date, price, shares, fee = self._parse_import_tx_row(row)
+            exp_amt = q_money(float(price) * float(shares))
+            amt_raw = row.get("amount")
+            if amt_raw is not None and str(amt_raw).strip() != "":
+                try:
+                    amtv = float(str(amt_raw).strip())
+                except (TypeError, ValueError) as e:
+                    raise DomainError(f"CSV amount 列无法解析为数字: {amt_raw}") from e
+                if abs(amtv - exp_amt) > 0.02:
+                    raise DomainError(f"CSV 金额与价格×份额不符: amount={amtv} 期望≈{exp_amt}")
+            if tx_type == "buy":
+                self.add_buy(fund_id, apply_date, confirm_date, price, shares, fee)
+            else:
+                self.add_sell(fund_id, apply_date, confirm_date, price, shares, fee)
+            count += 1
+        if count == 0:
+            raise DomainError("未导入任何有效交易行")
         return count
 
     def get_portfolio_overview(self) -> dict[str, float]:
@@ -358,6 +481,7 @@ class PortfolioService:
         sell_amount = sum(
             float(tx["amount"]) for tx in data["transactions"] if tx["tx_type"] == "sell"
         )
+        total_fees = sum(float(tx.get("fee", 0.0)) for tx in data["transactions"])
         realized_pnl = sell_amount - buy_amount + total_cost
         return {
             "total_cost": q_money(total_cost),
@@ -367,16 +491,22 @@ class PortfolioService:
             "buy_amount": q_money(buy_amount),
             "sell_amount": q_money(sell_amount),
             "realized_pnl": q_money(realized_pnl),
+            "total_fees": q_money(total_fees),
+            "realized_pnl_after_fees": q_money(realized_pnl - total_fees),
         }
 
     @staticmethod
-    def _validate_trade_inputs(apply_date: str, confirm_date: str, price: float, shares: float) -> None:
+    def _validate_trade_inputs(
+        apply_date: str, confirm_date: str, price: float, shares: float, fee: float = 0.0
+    ) -> None:
         if apply_date > confirm_date:
             raise DomainError("申请日不能晚于确认日")
         if float(price) <= 0:
             raise DomainError("价格必须大于0")
         if float(shares) <= 0:
             raise DomainError("份额必须大于0")
+        if float(fee) < 0:
+            raise DomainError("手续费不能为负数")
 
     @staticmethod
     def classify_sell_risk(

@@ -6,7 +6,7 @@ import requests
 
 from fundshare.fund_api import FundApiClient
 from fundshare.service import PortfolioService
-from fundshare.storage import JsonStorage
+from fundshare.storage import JsonStorage, default_store_path
 
 
 @pytest.fixture()
@@ -128,6 +128,17 @@ def test_trade_price_and_shares_must_be_positive(service: PortfolioService) -> N
         service.add_sell(fund["id"], "2026-04-02", "2026-04-03", 1.0, 0)
 
 
+def test_default_store_path_respects_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    assert Path(default_store_path()) == tmp_path / "store.json"
+
+
+def test_json_storage_default_uses_data_dir_when_set(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    s = JsonStorage()
+    assert s.db_path == tmp_path / "store.json"
+
+
 def test_storage_normalizes_old_schema(tmp_path: Path) -> None:
     db_path = tmp_path / "store.json"
     db_path.write_text(
@@ -157,6 +168,7 @@ def test_storage_migrates_legacy_transaction_date(tmp_path: Path) -> None:
     assert tx["apply_date"] == "2026-01-01"
     assert tx["confirm_date"] == "2026-01-01"
     assert "date" not in tx
+    assert tx["fee"] == 0.0
 
 
 def test_storage_recovers_from_backup_when_primary_corrupted(tmp_path: Path) -> None:
@@ -217,9 +229,9 @@ def test_export_transactions_csv_contains_expected_columns_and_rows(service: Por
     service.add_buy(fund["id"], "2026-06-02", "2026-06-03", 1.11, 10)
     service.add_sell(fund["id"], "2026-06-04", "2026-06-05", 1.12, 3)
     csv_text = service.export_transactions_csv(fund["id"])
-    assert "tx_type,apply_date,confirm_date,price,shares,amount" in csv_text
-    assert "buy,2026-06-02,2026-06-03,1.11,10.0,11.1" in csv_text
-    assert "sell,2026-06-04,2026-06-05,1.12,3.0,3.36" in csv_text
+    assert "fee" in csv_text.splitlines()[0]
+    assert "buy,2026-06-02,2026-06-03,1.11,10.0,11.1,0.0" in csv_text.replace("\r\n", "\n")
+    assert "sell,2026-06-04,2026-06-05,1.12,3.0,3.36,0.0" in csv_text.replace("\r\n", "\n")
 
 
 def test_position_summary_calculation(service: PortfolioService) -> None:
@@ -233,6 +245,36 @@ def test_position_summary_calculation(service: PortfolioService) -> None:
     assert summary["market_value"] == 144.0
     assert summary["floating_pnl"] == 14.0
     assert summary["avg_cost"] == 1.0833
+    assert summary["avg_holding_days"] >= 0
+    assert summary["first_lot_age_days"] >= summary["avg_holding_days"]
+
+
+def test_position_summary_holding_days_weighted(
+    monkeypatch: pytest.MonkeyPatch, service: PortfolioService
+) -> None:
+    from datetime import date as dt_date
+
+    class D(dt_date):
+        @classmethod
+        def today(cls) -> dt_date:
+            return dt_date(2026, 3, 10)
+
+    monkeypatch.setattr("fundshare.service.date", D)
+    fund = service.add_fund("700010", "天数加权", 1.2, "2026-01-01")
+    service.add_buy(fund["id"], "2026-01-04", "2026-01-05", 1.0, 100)
+    service.add_buy(fund["id"], "2026-02-01", "2026-02-02", 1.0, 50)
+    s = service.get_position_summary(fund["id"])
+    d1 = (dt_date(2026, 3, 10) - dt_date(2026, 1, 5)).days
+    d2 = (dt_date(2026, 3, 10) - dt_date(2026, 2, 2)).days
+    exp_avg = (100 * d1 + 50 * d2) / 150
+    assert s["avg_holding_days"] == round(exp_avg, 1)
+    assert s["first_lot_age_days"] == float(d1)
+
+
+def test_get_position_summary_rejects_bad_date_field(service: PortfolioService) -> None:
+    f = service.add_fund("700011", "df", 1.0, "2026-01-01")
+    with pytest.raises(ValueError):
+        service.get_position_summary(f["id"], date_field="bogus")
 
 
 def test_all_position_summaries_sorted_by_floating_pnl(service: PortfolioService) -> None:
@@ -329,6 +371,8 @@ def test_export_portfolio_csv(service: PortfolioService) -> None:
     f = service.add_fund("760001", "导出组合", 1.1, "2026-08-01")
     service.add_buy(f["id"], "2026-08-02", "2026-08-03", 1.0, 10)
     text = service.export_portfolio_csv()
+    assert "avg_holding_days" in text.replace("\r\n", "\n")
+    assert "annualized_simple_ratio" in text.replace("\r\n", "\n")
     assert "code,name,holding_shares" in text.replace("\r\n", "\n")
     assert "760001" in text
     assert "1.1" in text
@@ -383,6 +427,8 @@ def test_portfolio_overview_aggregates_totals(service: PortfolioService) -> None
     assert overview["buy_amount"] == 150.0
     assert overview["sell_amount"] == 0.0
     assert overview["realized_pnl"] == 0.0
+    assert overview["total_fees"] == 0.0
+    assert overview["realized_pnl_after_fees"] == 0.0
 
 
 def test_portfolio_overview_realized_pnl(service: PortfolioService) -> None:
@@ -394,6 +440,98 @@ def test_portfolio_overview_realized_pnl(service: PortfolioService) -> None:
     assert overview["sell_amount"] == 72.0
     assert overview["total_cost"] == 40.0
     assert overview["realized_pnl"] == 12.0
+    assert overview["total_fees"] == 0.0
+    assert overview["realized_pnl_after_fees"] == 12.0
+
+
+def test_portfolio_overview_includes_total_fees(service: PortfolioService) -> None:
+    f = service.add_fund("740002", "手续费组合", 1.0, "2026-07-01")
+    service.add_buy(f["id"], "2026-07-02", "2026-07-03", 1.0, 100, fee=1.0)
+    service.add_sell(f["id"], "2026-07-04", "2026-07-05", 1.1, 50, fee=0.5)
+    overview = service.get_portfolio_overview()
+    assert overview["total_fees"] == 1.5
+    assert overview["realized_pnl_after_fees"] == overview["realized_pnl"] - 1.5
+
+
+def test_transaction_fee_persisted_and_csv(service: PortfolioService) -> None:
+    f = service.add_fund("740003", "手续费单基", 1.0, "2026-07-01")
+    service.add_buy(f["id"], "2026-07-02", "2026-07-03", 1.0, 10, fee=0.25)
+    txs = service.get_transactions(f["id"])
+    assert txs[0]["fee"] == 0.25
+    csv_text = service.export_transactions_csv(f["id"])
+    assert ",0.25" in csv_text.replace("\r\n", "\n")
+
+
+def test_trade_fee_must_be_non_negative(service: PortfolioService) -> None:
+    fund = service.add_fund("300002", "手续费校验", 1.0, "2026-04-01")
+    with pytest.raises(ValueError):
+        service.add_buy(fund["id"], "2026-04-02", "2026-04-03", 1.0, 10, fee=-0.01)
+    service.add_buy(fund["id"], "2026-04-02", "2026-04-03", 1.0, 10)
+    with pytest.raises(ValueError):
+        service.add_sell(fund["id"], "2026-04-06", "2026-04-07", 1.0, 5, fee=-1.0)
+
+
+def test_import_transactions_json_with_fee(service: PortfolioService) -> None:
+    f = service.add_fund("770003", "JSON含费", 1.0, "2026-01-01")
+    payload = json.dumps(
+        {
+            "fund_code": "770003",
+            "transactions": [
+                {
+                    "tx_type": "buy",
+                    "apply_date": "2026-02-01",
+                    "confirm_date": "2026-02-02",
+                    "price": 1.0,
+                    "shares": 5.0,
+                    "fee": 0.1,
+                },
+            ],
+        }
+    )
+    assert service.import_transactions_json(payload) == 1
+    assert service.get_transactions(f["id"])[0]["fee"] == 0.1
+
+
+def test_import_transactions_csv_success(service: PortfolioService) -> None:
+    f = service.add_fund("780001", "CSV导入", 1.0, "2026-01-01")
+    body = (
+        "tx_type,apply_date,confirm_date,price,shares\n"
+        "buy,2026-02-01,2026-02-02,1.0,10\n"
+        "sell,2026-02-03,2026-02-04,1.1,5\n"
+    )
+    assert service.import_transactions_csv(body, "780001") == 2
+    txs = service.get_transactions(f["id"])
+    assert len(txs) == 2
+    assert txs[0]["tx_type"] == "buy"
+    assert txs[1]["shares"] == 5.0
+
+
+def test_import_transactions_csv_with_amount_and_fee(service: PortfolioService) -> None:
+    f = service.add_fund("780002", "CSV校验额", 1.0, "2026-01-01")
+    body = "tx_type,apply_date,confirm_date,price,shares,amount,fee\nbuy,2026-02-01,2026-02-02,2.0,5,10.0,0.3\n"
+    assert service.import_transactions_csv(body, "780002") == 1
+    assert service.get_transactions(f["id"])[0]["fee"] == 0.3
+
+
+def test_import_transactions_csv_amount_mismatch(service: PortfolioService) -> None:
+    f = service.add_fund("780003", "CSV错额", 1.0, "2026-01-01")
+    body = "tx_type,apply_date,confirm_date,price,shares,amount\nbuy,2026-02-01,2026-02-02,2.0,5,99\n"
+    with pytest.raises(ValueError):
+        service.import_transactions_csv(body, "780003")
+
+
+def test_import_transactions_csv_unknown_fund(service: PortfolioService) -> None:
+    service.add_fund("780004", "占位", 1.0, "2026-01-01")
+    body = "tx_type,apply_date,confirm_date,price,shares\nbuy,2026-02-01,2026-02-02,1.0,1\n"
+    with pytest.raises(ValueError):
+        service.import_transactions_csv(body, "999999")
+
+
+def test_import_transactions_csv_missing_header(service: PortfolioService) -> None:
+    f = service.add_fund("780005", "缺列", 1.0, "2026-01-01")
+    body = "tx_type,apply_date,confirm_date,price\nbuy,2026-02-01,2026-02-02,1.0\n"
+    with pytest.raises(ValueError):
+        service.import_transactions_csv(body, "780005")
 
 
 def test_fifo_many_small_sells_remain_consistent(service: PortfolioService) -> None:
@@ -436,6 +574,33 @@ def test_auto_fetch_fund_info_with_mock(monkeypatch: pytest.MonkeyPatch) -> None
     assert nav == 1.2345
 
 
+def test_fund_api_reuses_js_within_cache_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
+    body = (
+        'var fS_name = "示例基金"; var Data_netWorthTrend = '
+        '[{"x":1711900800000,"y":1.2345},{"x":1711987200000,"y":1.3}];'
+    )
+    calls = {"n": 0}
+
+    def _get(*_a: object, **_kw: object) -> object:
+        calls["n"] += 1
+
+        class R:
+            text = body
+
+            @staticmethod
+            def raise_for_status() -> None:
+                return None
+
+        return R()
+
+    monkeypatch.setattr(requests, "get", _get)
+    monkeypatch.setattr("fundshare.fund_api.time.sleep", lambda *_a, **_k: None)
+    client = FundApiClient(js_cache_ttl_sec=300.0)
+    client.fetch_name_and_nav("000001", "2024-04-01")
+    client.fetch_name_and_nav("000001", "2024-04-02")
+    assert calls["n"] == 1
+    client.fetch_name_and_nav("000002", "2024-04-01")
+    assert calls["n"] == 2
 def test_fund_api_empty_code_raises() -> None:
     client = FundApiClient()
     with pytest.raises(ValueError):
