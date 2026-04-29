@@ -23,7 +23,7 @@ with st.sidebar:
     st.divider()
     st.markdown("**快捷说明**")
     st.markdown(
-        "- **基金**：新增代码、更新净值、无仓删基\n"
+        "- **基金**：新增代码、无仓删基、清空记录\n"
         "- **交易**：买卖、导入、单基净值图\n"
         "- **组合**：总览指标、持仓表与导出"
     )
@@ -251,15 +251,15 @@ def render_fund_management() -> None:
         hold_ratio = r["持有收益率"] * 100.0
         cum_pnl = r["累计盈亏"]
         exp_title = (
-            f"{f['code']} - {f['name']}  |  持有收益 {hold_pnl:.4f}  |  收益率 {hold_ratio:.2f}%  |  累计盈亏 {cum_pnl:.4f}"
+            f"{f['code']} - {f['name']}  |  持有收益 {hold_pnl:.2f}  |  收益率 {hold_ratio:.2f}%  |  累计盈亏 {cum_pnl:.2f}"
         )
         with st.expander(exp_title, expanded=False):
             k1, k2, k3, k4, k5 = st.columns(5)
             k1.metric("基金代码", str(f["code"]))
             k2.metric("持有份额", f"{float(s['holding_shares']):.4f}")
-            k3.metric("持有收益", f"{hold_pnl:.4f}")
+            k3.metric("持有收益", f"{hold_pnl:.2f}")
             k4.metric("持有收益率", f"{hold_ratio:.2f}%")
-            k5.metric("累计盈亏", f"{cum_pnl:.4f}")
+            k5.metric("累计盈亏", f"{cum_pnl:.2f}")
 
             buy_lots = _buy_lot_status_from_transactions(txs)
             if buy_lots:
@@ -431,7 +431,7 @@ def render_fund_management() -> None:
 
 def render_maintenance() -> None:
     st.subheader("基金维护")
-    st.caption("用于基金新增、净值更新与删除；不会影响「基金管理」展示逻辑。")
+    st.caption("仅用于：添加基金、删除基金、删除单条交易、一键清空单基金全部记录。")
 
     if "new_fund_code" not in st.session_state:
         st.session_state["new_fund_code"] = ""
@@ -472,18 +472,6 @@ def render_maintenance() -> None:
         height=min(320, 52 + len(funds) * 36),
     )
 
-    with st.form("update_nav_form", clear_on_submit=True):
-        options = {_format_fund_label(f): f["id"] for f in funds}
-        selected = st.selectbox("选择基金更新净值", options=list(options.keys()))
-        nc1, nc2 = st.columns(2)
-        new_nav = nc1.number_input("最新净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f")
-        d = nc2.date_input("更新日期", value=date.today(), key="maint_update_date")
-        submitted = st.form_submit_button("更新净值")
-        if submitted:
-            service.update_fund_nav(options[selected], new_nav, d.isoformat())
-            st.success("净值已更新。")
-            st.rerun()
-
     with st.expander("删除基金（无持仓时）"):
         del_opts = {_format_fund_label(f): f["id"] for f in funds}
         del_pick = st.selectbox("选择要删除的基金", options=list(del_opts.keys()), key="maint_fund_delete_pick")
@@ -494,6 +482,18 @@ def render_maintenance() -> None:
                 st.error(str(e))
             else:
                 st.success("已删除。")
+                st.rerun()
+
+    with st.expander("一键清空某基金的所有记录（交易+净值）", expanded=False):
+        clr_opts = {_format_fund_label(f): f["id"] for f in funds}
+        clr_pick = st.selectbox("选择要清空记录的基金", options=list(clr_opts.keys()), key="maint_fund_clear_pick")
+        clr_confirm = st.checkbox("我确认清空该基金全部交易与净值记录", value=False, key="maint_fund_clear_confirm")
+        if st.button("确认清空该基金记录", key="maint_fund_clear_btn", type="primary"):
+            if not clr_confirm:
+                st.error("请先勾选确认。")
+            else:
+                service.clear_fund_records(clr_opts[clr_pick])
+                st.success("该基金历史记录已清空。")
                 st.rerun()
 
     with st.expander("删除买入/卖出记录", expanded=False):
@@ -567,11 +567,11 @@ def render_trades_and_chart() -> None:
     st.markdown("##### 持仓快照")
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("持仓份额", f"{summary['holding_shares']:.4f}")
-    m2.metric("持仓成本", f"{summary['holding_cost']:.4f}")
+    m2.metric("持仓成本", f"{summary['holding_cost']:.2f}")
     m3.metric("当前净值", f"{summary['current_nav']:.4f}")
-    m4.metric("估值", f"{summary['market_value']:.4f}")
+    m4.metric("估值", f"{summary['market_value']:.2f}")
     m5, m6, m7, m8 = st.columns(4)
-    m5.metric("浮动盈亏", f"{summary['floating_pnl']:.4f}")
+    m5.metric("浮动盈亏", f"{summary['floating_pnl']:.2f}")
     m6.metric("加权持仓天数", f"{summary['avg_holding_days']:.1f}", help="按剩余份额加权")
     m7.metric("最早买入天数", f"{summary['first_lot_age_days']:.1f}")
     m8.metric("简易年化", f"{summary['annualized_simple_ratio'] * 100:.2f}%", help="浮盈/成本，按加权持仓天数线性折算年率")
@@ -579,163 +579,212 @@ def render_trades_and_chart() -> None:
     t1, t2 = st.columns(2)
     with t1:
         with st.container(border=True):
-            with st.form("buy_form", clear_on_submit=True):
-                st.markdown("**买入**")
-                confirm_d = st.date_input("买入确认日", value=date.today(), key="buy_confirm_date")
-                auto_price = st.checkbox("使用确认日自动净值", value=True, key="buy_auto_price")
-                buy_auto_nav = _fetch_nav_by_date(selected_fund["code"], confirm_d.isoformat())
-                if auto_price:
-                    if buy_auto_nav is None:
-                        st.warning("未获取到确认日净值，请切换为手动输入。")
-                        price = st.number_input(
-                            "买入确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="buy_price"
-                        )
-                    else:
-                        price = buy_auto_nav
-                        st.info(f"买入确认净值（自动）: {price:.4f}")
+            st.markdown("**买入**")
+            confirm_d = st.date_input("买入确认日", value=date.today(), key=f"buy_confirm_date_{fund_id}")
+            buy_mode = st.radio(
+                "买入录入方式",
+                ["按净值+份额", "按金额+份额（自动算净值）"],
+                horizontal=True,
+                key=f"buy_mode_{fund_id}",
+            )
+            auto_price = st.checkbox("确认日自动净值", value=True, key=f"buy_auto_price_{fund_id}")
+            buy_auto_nav = _fetch_nav_by_date(selected_fund["code"], confirm_d.isoformat())
+
+            if buy_mode == "按净值+份额":
+                if auto_price and buy_auto_nav is not None:
+                    price = float(buy_auto_nav)
+                    st.info(f"买入确认净值（自动）: {price:.4f}")
                 else:
+                    if auto_price and buy_auto_nav is None:
+                        st.warning("未获取到确认日净值，请取消勾选后手动输入。")
                     price = st.number_input(
-                        "买入确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="buy_price"
+                        "买入确认净值",
+                        min_value=0.0001,
+                        value=1.0,
+                        step=0.0001,
+                        format="%.4f",
+                        key=f"buy_price_{fund_id}",
                     )
-                buy_preset = st.selectbox(
-                    "买入份额快捷",
-                    ["自定义", "100", "500", "1000", "5000"],
-                    key=f"buy_preset_{fund_id}",
+                buy_preset = st.selectbox("买入份额快捷", ["自定义", "100", "500", "1000", "5000"], key=f"buy_preset_{fund_id}")
+                is_custom = buy_preset == "自定义"
+                preset_val = 100.0 if is_custom else float(buy_preset)
+                shares_input = st.number_input(
+                    "买入份额",
+                    min_value=0.0001,
+                    value=preset_val,
+                    step=1.0,
+                    format="%.4f",
+                    disabled=not is_custom,
+                    key=f"buy_shares_{fund_id}",
                 )
-                buy_default = 100.0 if buy_preset == "自定义" else float(buy_preset)
+                shares = float(shares_input if is_custom else preset_val)
+                amount = round(float(price) * float(shares), 2)
+            else:
                 shares = st.number_input(
                     "买入份额",
                     min_value=0.0001,
-                    value=buy_default,
+                    value=100.0,
                     step=1.0,
                     format="%.4f",
-                    key=f"buy_shares_{fund_id}_{buy_preset}",
+                    key=f"buy_shares_amt_mode_{fund_id}",
                 )
-                buy_fee = st.number_input(
-                    "手续费（可选）", min_value=0.0, value=0.0, step=0.01, format="%.4f", key=f"buy_fee_{fund_id}"
+                amount = st.number_input(
+                    "买入金额",
+                    min_value=0.0001,
+                    value=100.0,
+                    step=0.01,
+                    format="%.2f",
+                    key=f"buy_amount_{fund_id}",
                 )
-                amount = round(price * shares, 4)
-                st.write(f"自动计算金额: **{amount}**")
-                submitted = st.form_submit_button("记录买入", disabled=_is_locked("buy_tx"))
-                if submitted:
-                    try:
-                        cd = confirm_d.isoformat()
-                        service.add_buy(fund_id, cd, cd, price, shares, buy_fee)
-                    except ValueError as e:
-                        st.error(str(e))
-                    else:
-                        st.success("买入记录已保存。")
-                        _lock("buy_tx")
+                price = round(float(amount) / float(shares), 6)
+                st.info(f"自动计算净值: {price:.6f}")
+
+            buy_fee = st.number_input(
+                "手续费（可选）", min_value=0.0, value=0.0, step=0.01, format="%.2f", key=f"buy_fee_{fund_id}"
+            )
+            st.write(f"本次买入金额: **{amount:.2f}**")
+            if st.button("记录买入", key=f"buy_submit_{fund_id}", disabled=_is_locked("buy_tx")):
+                try:
+                    cd = confirm_d.isoformat()
+                    service.add_buy(fund_id, cd, cd, float(price), float(shares), float(buy_fee))
+                except ValueError as e:
+                    st.error(str(e))
+                else:
+                    st.success("买入记录已保存。")
+                    _lock("buy_tx")
+                    st.rerun()
 
     with t2:
         with st.container(border=True):
-            with st.form("sell_form", clear_on_submit=True):
-                st.markdown("**卖出**")
-                st.caption(f"当前可卖出份额：{remaining_shares:.4f}")
-                apply_d = st.date_input("卖出申请日", value=date.today(), key="sell_apply_date")
-                confirm_d = st.date_input("卖出确认日", value=date.today(), key="sell_confirm_date")
-                auto_price = st.checkbox("使用确认日自动净值", value=True, key="sell_auto_price")
-                sell_auto_nav = _fetch_nav_by_date(selected_fund["code"], confirm_d.isoformat())
-                if auto_price:
-                    if sell_auto_nav is None:
-                        st.warning("未获取到确认日净值，请切换为手动输入。")
-                        price = st.number_input(
-                            "卖出确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="sell_price"
-                        )
-                    else:
-                        price = sell_auto_nav
-                        st.info(f"卖出确认净值（自动）: {price:.4f}")
-                else:
-                    price = st.number_input(
-                        "卖出确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="sell_price"
-                    )
-                sell_mode = st.radio(
-                    "卖出方式",
-                    ["FIFO 自动", "指定买入批次"],
-                    horizontal=True,
-                    index=1,
-                    key=f"sell_mode_{fund_id}",
-                )
-                picks: list[dict] = []
-                if sell_mode == "FIFO 自动":
-                    sell_preset = st.selectbox(
-                        "卖出比例快捷",
-                        ["自定义", "25%", "50%", "75%", "100%"],
-                        key=f"sell_preset_{fund_id}",
-                    )
-                    if sell_preset == "自定义":
-                        default_sell = min(100.0, remaining_shares) if remaining_shares > 0 else 0.0001
-                    else:
-                        pct = float(sell_preset.rstrip("%")) / 100.0
-                        default_sell = max(
-                            0.0001,
-                            min(float(remaining_shares), float(remaining_shares) * pct) if remaining_shares > 0 else 0.0001,
-                        )
-                    shares = st.number_input(
-                        "卖出份额",
-                        min_value=0.0001,
-                        max_value=max(0.0001, remaining_shares),
-                        value=default_sell,
+            st.markdown("**卖出**")
+            st.caption(f"当前可卖出份额：{remaining_shares:.4f}")
+            sell_mode = st.radio(
+                "卖出方式",
+                ["FIFO 自动", "指定买入批次"],
+                horizontal=True,
+                index=1,
+                key=f"sell_mode_{fund_id}",
+            )
+            picks: list[dict] = []
+            lot_total = 0.0
+            if sell_mode == "指定买入批次":
+                lots = service.get_sellable_buy_lots(fund_id, date_field="confirm_date")
+                lot_map = {
+                    f"买入#{int(l['buy_id'])} {l['date']} 价:{float(l['price']):.4f} 剩:{float(l['remaining_shares']):.4f}": l
+                    for l in lots
+                    if float(l["remaining_shares"]) > 1e-9
+                }
+                chosen = st.multiselect("选择要抵扣的买入批次", options=list(lot_map.keys()), key=f"sell_lot_pick_{fund_id}")
+                for label in chosen:
+                    lot = lot_map[label]
+                    max_sh = float(lot["remaining_shares"])
+                    sh = st.number_input(
+                        f"批次#{int(lot['buy_id'])} 卖出份额",
+                        min_value=0.0,
+                        max_value=max_sh,
+                        value=max_sh,
                         step=1.0,
                         format="%.4f",
-                        key=f"sell_shares_{fund_id}_{sell_preset}",
+                        key=f"sell_lot_sh_{fund_id}_{int(lot['buy_id'])}",
                     )
-                else:
-                    lots = service.get_sellable_buy_lots(fund_id, date_field="confirm_date")
-                    lot_map = {
-                        f"买入#{int(l['buy_id'])} {l['date']} 价:{float(l['price']):.4f} 剩:{float(l['remaining_shares']):.4f}": l
-                        for l in lots
-                        if float(l["remaining_shares"]) > 1e-9
-                    }
-                    chosen = st.multiselect("选择要抵扣的买入批次", options=list(lot_map.keys()), key=f"sell_lot_pick_{fund_id}")
-                    total = 0.0
-                    for label in chosen:
-                        lot = lot_map[label]
-                        max_sh = float(lot["remaining_shares"])
-                        sh = st.number_input(
-                            f"批次#{int(lot['buy_id'])} 卖出份额",
-                            min_value=0.0,
-                            max_value=max_sh,
-                            value=max_sh,
-                            step=1.0,
-                            format="%.4f",
-                            key=f"sell_lot_sh_{fund_id}_{int(lot['buy_id'])}",
-                        )
-                        if sh > 0:
-                            picks.append({"buy_tx_id": int(lot["buy_id"]), "shares": float(sh)})
-                            total += float(sh)
-                    shares = total
-                    st.caption(f"本次卖出总份额：{shares:.4f}")
-                sell_fee = st.number_input(
-                    "手续费（可选）", min_value=0.0, value=0.0, step=0.01, format="%.4f", key=f"sell_fee_{fund_id}"
+                    if sh > 0:
+                        picks.append({"buy_tx_id": int(lot["buy_id"]), "shares": float(sh)})
+                        lot_total += float(sh)
+                st.caption(f"本次卖出总份额：{lot_total:.4f}")
+
+            confirm_d = st.date_input("卖出确认日", value=date.today(), key=f"sell_confirm_date_{fund_id}")
+            sell_entry_mode = st.radio(
+                "卖出录入方式",
+                ["按净值+份额", "按金额+份额（自动算净值）"],
+                horizontal=True,
+                key=f"sell_entry_mode_{fund_id}",
+            )
+            if sell_mode == "FIFO 自动":
+                sell_preset = st.selectbox(
+                    "卖出比例快捷",
+                    ["自定义", "25%", "50%", "75%", "100%"],
+                    key=f"sell_preset_{fund_id}",
                 )
-                sell_risk = service.classify_sell_risk(remaining_shares, float(shares))
-                sell_confirmed = True
-                if sell_risk in ("large", "clearout"):
-                    tip = "清仓卖出" if sell_risk == "clearout" else "大额卖出（≥50%持仓）"
-                    st.warning(f"{tip}：请勾选下方确认后再提交。")
-                    sell_confirmed = st.checkbox(
-                        "我已核对份额与价格，确认提交本次卖出", value=False, key=f"sell_confirm_{fund_id}"
+                if sell_preset == "自定义":
+                    default_sell = min(100.0, remaining_shares) if remaining_shares > 0 else 0.0001
+                else:
+                    pct = float(sell_preset.rstrip("%")) / 100.0
+                    default_sell = max(
+                        0.0001,
+                        min(float(remaining_shares), float(remaining_shares) * pct) if remaining_shares > 0 else 0.0001,
                     )
-                submitted = st.form_submit_button("记录卖出", disabled=_is_locked("sell_tx"))
-                if submitted:
-                    if sell_risk in ("large", "clearout") and not sell_confirmed:
-                        st.error("请先勾选确认后再提交卖出。")
-                    else:
-                        try:
-                            if sell_mode == "FIFO 自动":
-                                service.add_sell(
-                                    fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, shares, sell_fee
-                                )
-                            else:
-                                service.add_sell_by_lots(
-                                    fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, picks, sell_fee
-                                )
-                        except ValueError as e:
-                            st.error(str(e))
+                shares = st.number_input(
+                    "卖出份额",
+                    min_value=0.0001,
+                    max_value=max(0.0001, remaining_shares),
+                    value=default_sell,
+                    step=1.0,
+                    format="%.4f",
+                    key=f"sell_shares_{fund_id}_{sell_preset}_{sell_entry_mode}",
+                )
+            else:
+                shares = lot_total
+
+            sell_auto_nav = _fetch_nav_by_date(selected_fund["code"], confirm_d.isoformat())
+            if sell_entry_mode == "按净值+份额":
+                auto_price = st.checkbox("确认日自动净值", value=True, key=f"sell_auto_price_{fund_id}")
+                if auto_price and sell_auto_nav is not None:
+                    price = float(sell_auto_nav)
+                    st.info(f"卖出确认净值（自动）: {price:.4f}")
+                else:
+                    if auto_price and sell_auto_nav is None:
+                        st.warning("未获取到确认日净值，请取消勾选后手动输入。")
+                    price = st.number_input(
+                        "卖出确认净值",
+                        min_value=0.0001,
+                        value=1.0,
+                        step=0.0001,
+                        format="%.4f",
+                        key=f"sell_price_{fund_id}",
+                    )
+                amount = round(float(price) * float(shares), 2)
+            else:
+                if sell_mode == "指定买入批次" and shares <= 1e-9:
+                    st.warning("请先选择并填写要抵扣的买入批次份额。")
+                amount = st.number_input(
+                    "卖出金额",
+                    min_value=0.0001,
+                    value=100.0,
+                    step=0.01,
+                    format="%.2f",
+                    key=f"sell_amount_{fund_id}",
+                )
+                price = round(float(amount) / float(shares), 6) if float(shares) > 1e-9 else 0.0
+                st.info(f"自动计算净值: {price:.6f}")
+
+            sell_fee = st.number_input(
+                "手续费（可选）", min_value=0.0, value=0.0, step=0.01, format="%.2f", key=f"sell_fee_{fund_id}"
+            )
+            st.write(f"本次卖出金额: **{amount:.2f}**")
+            sell_risk = service.classify_sell_risk(remaining_shares, float(shares))
+            sell_confirmed = True
+            if sell_risk in ("large", "clearout"):
+                tip = "清仓卖出" if sell_risk == "clearout" else "大额卖出（≥50%持仓）"
+                st.warning(f"{tip}：请勾选下方确认后再提交。")
+                sell_confirmed = st.checkbox(
+                    "我已核对份额与价格，确认提交本次卖出", value=False, key=f"sell_confirm_{fund_id}"
+                )
+            if st.button("记录卖出", key=f"sell_submit_{fund_id}", disabled=_is_locked("sell_tx")):
+                if sell_risk in ("large", "clearout") and not sell_confirmed:
+                    st.error("请先勾选确认后再提交卖出。")
+                else:
+                    try:
+                        cd = confirm_d.isoformat()
+                        if sell_mode == "FIFO 自动":
+                            service.add_sell(fund_id, cd, cd, float(price), float(shares), float(sell_fee))
                         else:
-                            st.success("卖出记录已保存。")
-                            _lock("sell_tx")
+                            service.add_sell_by_lots(fund_id, cd, cd, float(price), picks, float(sell_fee))
+                    except ValueError as e:
+                        st.error(str(e))
+                    else:
+                        st.success("卖出记录已保存。")
+                        _lock("sell_tx")
+                        st.rerun()
 
     st.markdown("##### 筛选与交易表")
     filter_c1, filter_c2, filter_c3 = st.columns([1, 1, 1])
@@ -771,10 +820,14 @@ def render_trades_and_chart() -> None:
             }
         )
         st.dataframe(
-            tx_df[["交易类型", "申请日", "确认日", "价格", "份额", "金额", "手续费"]],
+            tx_df[["交易类型", "确认日", "价格", "份额", "金额", "手续费"]],
             use_container_width=True,
             hide_index=True,
             height=min(400, 52 + len(transactions) * 36),
+            column_config={
+                "金额": st.column_config.NumberColumn(format="%.2f"),
+                "手续费": st.column_config.NumberColumn(format="%.2f"),
+            },
         )
         csv_content = service.export_transactions_csv(fund_id, date_field=date_field)
         st.download_button(
@@ -1053,16 +1106,16 @@ with tab1:
     overview = service.get_portfolio_overview()
     st.subheader("组合概览")
     o1, o2, o3, o4 = st.columns(4)
-    o1.metric("总成本", f"{overview['total_cost']:.4f}")
-    o2.metric("总市值", f"{overview['total_value']:.4f}")
-    o3.metric("浮动盈亏", f"{overview['total_pnl']:.4f}")
+    o1.metric("总成本", f"{overview['total_cost']:.2f}")
+    o2.metric("总市值", f"{overview['total_value']:.2f}")
+    o3.metric("浮动盈亏", f"{overview['total_pnl']:.2f}")
     o4.metric("组合收益率", f"{overview['pnl_ratio'] * 100:.2f}%")
     o5, o6, o7, o8 = st.columns(4)
-    o5.metric("累计买入", f"{overview['buy_amount']:.4f}")
-    o6.metric("累计卖出", f"{overview['sell_amount']:.4f}")
-    o7.metric("已实现盈亏", f"{overview['realized_pnl']:.4f}")
-    o8.metric("累计手续费", f"{overview['total_fees']:.4f}")
-    st.caption(f"扣费后已实现盈亏：**{overview['realized_pnl_after_fees']:.4f}**")
+    o5.metric("累计买入", f"{overview['buy_amount']:.2f}")
+    o6.metric("累计卖出", f"{overview['sell_amount']:.2f}")
+    o7.metric("已实现盈亏", f"{overview['realized_pnl']:.2f}")
+    o8.metric("累计手续费", f"{overview['total_fees']:.2f}")
+    st.caption(f"扣费后已实现盈亏：**{overview['realized_pnl_after_fees']:.2f}**")
     st.divider()
     st.subheader("多基金持仓对比")
     all_summaries = service.get_all_position_summaries()

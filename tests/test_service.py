@@ -315,6 +315,17 @@ def test_delete_transaction_rejects_invalid_sequence(service: PortfolioService) 
         service.delete_transaction(fund["id"], b["id"])
 
 
+def test_clear_fund_records_removes_nav_and_transactions(service: PortfolioService) -> None:
+    fund = service.add_fund("720103", "清空记录测试", 1.0, "2026-07-01")
+    service.update_fund_nav(fund["id"], 1.02, "2026-07-02")
+    service.add_buy(fund["id"], "2026-07-03", "2026-07-03", 1.01, 10)
+    service.clear_fund_records(fund["id"])
+    assert service.list_funds()[0]["id"] == fund["id"]
+    assert service.get_nav_points(fund["id"]) == []
+    assert service.get_transactions(fund["id"]) == []
+    assert service.get_remaining_shares(fund["id"]) == 0.0
+
+
 def test_filter_transactions_by_date_range(service: PortfolioService) -> None:
     fund = service.add_fund("750001", "日期筛选测试", 1.0, "2026-07-01")
     service.add_buy(fund["id"], "2026-07-02", "2026-07-03", 1.0, 10)
