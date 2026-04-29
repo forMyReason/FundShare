@@ -144,8 +144,12 @@ def render_trades_and_chart() -> None:
             st.write(f"自动计算金额: **{amount}**")
             submitted = st.form_submit_button("记录买入")
             if submitted:
-                service.add_buy(fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, shares)
-                st.success("买入记录已保存。")
+                try:
+                    service.add_buy(fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, shares)
+                except ValueError as e:
+                    st.error(str(e))
+                else:
+                    st.success("买入记录已保存。")
 
     with t2:
         with st.form("sell_form", clear_on_submit=True):

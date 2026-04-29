@@ -26,6 +26,12 @@ def test_sell_must_not_exceed_holding(service: PortfolioService) -> None:
         service.add_sell(fund["id"], "2026-01-04", "2026-01-05", 1.3, 120)
 
 
+def test_trade_date_order_validation(service: PortfolioService) -> None:
+    fund = service.add_fund("100001", "日期校验", 1.0, "2026-01-01")
+    with pytest.raises(ValueError):
+        service.add_buy(fund["id"], "2026-01-03", "2026-01-02", 1.0, 1)
+
+
 def test_fifo_consumption_and_open_buy_points(service: PortfolioService) -> None:
     fund = service.add_fund("000001", "测试基金", 1.2, "2026-01-01")
     service.add_buy(fund["id"], "2026-01-02", "2026-01-03", 1.0, 100)
@@ -96,6 +102,20 @@ def test_invalid_date_field_raises(service: PortfolioService) -> None:
     fund = service.add_fund("000006", "口径异常测试", 1.0, "2026-04-01")
     with pytest.raises(ValueError):
         service.get_transactions(fund["id"], date_field="trade_date")
+
+
+def test_duplicate_fund_code_rejected(service: PortfolioService) -> None:
+    service.add_fund("200001", "重复代码基金", 1.0, "2026-04-01")
+    with pytest.raises(ValueError):
+        service.add_fund("200001", "重复代码基金2", 1.1, "2026-04-02")
+
+
+def test_trade_price_and_shares_must_be_positive(service: PortfolioService) -> None:
+    fund = service.add_fund("300001", "正数校验基金", 1.0, "2026-04-01")
+    with pytest.raises(ValueError):
+        service.add_buy(fund["id"], "2026-04-02", "2026-04-03", 0, 10)
+    with pytest.raises(ValueError):
+        service.add_sell(fund["id"], "2026-04-02", "2026-04-03", 1.0, 0)
 
 
 def test_storage_normalizes_old_schema(tmp_path: Path) -> None:

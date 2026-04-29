@@ -30,9 +30,16 @@ class PortfolioService:
 
     def add_fund(self, code: str, name: str, current_nav: float, nav_date: str | None = None) -> dict[str, Any]:
         data = self._load()
+        normalized_code = code.strip()
+        if not normalized_code:
+            raise ValueError("基金代码不能为空")
+        if any(f["code"] == normalized_code for f in data["funds"]):
+            raise ValueError("基金代码已存在")
+        if float(current_nav) <= 0:
+            raise ValueError("基金净值必须大于0")
         fund = Fund(
             id=self._next_id(data, "fund"),
-            code=code.strip(),
+            code=normalized_code,
             name=name.strip(),
             current_nav=float(current_nav),
         ).to_dict()
@@ -49,6 +56,8 @@ class PortfolioService:
 
     def update_fund_nav(self, fund_id: int, nav: float, nav_date: str | None = None) -> None:
         data = self._load()
+        if float(nav) <= 0:
+            raise ValueError("基金净值必须大于0")
         for fund in data["funds"]:
             if fund["id"] == fund_id:
                 fund["current_nav"] = float(nav)
@@ -70,6 +79,7 @@ class PortfolioService:
     ) -> dict[str, Any]:
         data = self._load()
         self._ensure_fund(data, fund_id)
+        self._validate_trade_inputs(apply_date, confirm_date, price, shares)
         tx = Transaction(
             id=self._next_id(data, "tx"),
             fund_id=fund_id,
@@ -89,6 +99,7 @@ class PortfolioService:
     ) -> dict[str, Any]:
         data = self._load()
         self._ensure_fund(data, fund_id)
+        self._validate_trade_inputs(apply_date, confirm_date, price, shares)
         sell_shares = float(shares)
         remain = self._total_remaining_shares(data, fund_id)
         if sell_shares > remain + 1e-9:
@@ -156,4 +167,13 @@ class PortfolioService:
 
     def auto_fetch_fund_info(self, code: str, target_date: str) -> tuple[str, float]:
         return self.api_client.fetch_name_and_nav(code, target_date)
+
+    @staticmethod
+    def _validate_trade_inputs(apply_date: str, confirm_date: str, price: float, shares: float) -> None:
+        if apply_date > confirm_date:
+            raise ValueError("申请日不能晚于确认日")
+        if float(price) <= 0:
+            raise ValueError("价格必须大于0")
+        if float(shares) <= 0:
+            raise ValueError("份额必须大于0")
 
