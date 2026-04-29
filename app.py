@@ -109,6 +109,14 @@ def render_trades_and_chart() -> None:
     if not funds:
         return
 
+    analysis_basis = st.radio(
+        "分析口径",
+        options=["按确认日", "按申请日"],
+        horizontal=True,
+        help="用于交易排序、FIFO计算和买入点在图上的日期位置。",
+    )
+    date_field = "confirm_date" if analysis_basis == "按确认日" else "apply_date"
+
     options = {_format_fund_label(f): f["id"] for f in funds}
     selected_label = st.selectbox("选择基金", list(options.keys()))
     fund_id = options[selected_label]
@@ -155,7 +163,7 @@ def render_trades_and_chart() -> None:
                 else:
                     st.success("卖出记录已保存。")
 
-    transactions = service.get_transactions(fund_id)
+    transactions = service.get_transactions(fund_id, date_field=date_field)
     if transactions:
         tx_df = pd.DataFrame(transactions)
         tx_df = tx_df.rename(
@@ -175,7 +183,7 @@ def render_trades_and_chart() -> None:
     if not nav_points:
         return
     nav_df = pd.DataFrame(nav_points).sort_values("date")
-    open_buys = service.get_open_buy_points(fund_id)
+    open_buys = service.get_open_buy_points(fund_id, date_field=date_field)
 
     fig = go.Figure()
     fig.add_trace(
@@ -201,7 +209,7 @@ def render_trades_and_chart() -> None:
             )
         )
     fig.update_layout(
-        title="净值曲线与当前持仓买入点",
+        title=f"净值曲线与当前持仓买入点（{analysis_basis}）",
         xaxis_title="日期",
         yaxis_title="净值",
         legend_title="图例",

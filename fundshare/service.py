@@ -112,20 +112,22 @@ class PortfolioService:
         points = [p for p in data["nav_points"] if p["fund_id"] == fund_id]
         return sorted(points, key=lambda x: x["date"])
 
-    def get_transactions(self, fund_id: int) -> list[dict[str, Any]]:
+    def get_transactions(self, fund_id: int, date_field: str = "confirm_date") -> list[dict[str, Any]]:
         data = self._load()
         txs = [tx for tx in data["transactions"] if tx["fund_id"] == fund_id]
-        return sorted(txs, key=lambda x: (x["confirm_date"], x["id"]))
+        if date_field not in {"confirm_date", "apply_date"}:
+            raise ValueError("date_field must be confirm_date or apply_date")
+        return sorted(txs, key=lambda x: (x[date_field], x["id"]))
 
-    def get_open_buy_points(self, fund_id: int) -> list[dict[str, Any]]:
-        buys = self.get_transactions(fund_id)
+    def get_open_buy_points(self, fund_id: int, date_field: str = "confirm_date") -> list[dict[str, Any]]:
+        buys = self.get_transactions(fund_id, date_field=date_field)
         lots: list[dict[str, Any]] = []
         for tx in buys:
             if tx["tx_type"] == "buy":
                 lots.append(
                     {
                         "buy_id": tx["id"],
-                        "date": tx["confirm_date"],
+                        "date": tx[date_field],
                         "price": tx["price"],
                         "original_shares": tx["shares"],
                         "remaining_shares": tx["shares"],

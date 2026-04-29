@@ -78,6 +78,20 @@ def test_simulated_user_flow(service: PortfolioService) -> None:
     assert open_points[0]["remaining_shares"] == 80
 
 
+def test_apply_date_basis_changes_order_and_marker_date(service: PortfolioService) -> None:
+    fund = service.add_fund("000005", "日期口径测试", 1.0, "2026-04-01")
+    service.add_buy(fund["id"], "2026-04-10", "2026-04-12", 1.0, 100)
+    service.add_buy(fund["id"], "2026-04-08", "2026-04-15", 1.1, 100)
+    # confirm_date 排序下第二笔是后确认
+    confirm_txs = service.get_transactions(fund["id"], date_field="confirm_date")
+    assert confirm_txs[0]["price"] == 1.0
+    # apply_date 排序下第二笔是后申请
+    apply_txs = service.get_transactions(fund["id"], date_field="apply_date")
+    assert apply_txs[0]["price"] == 1.1
+    open_by_apply = service.get_open_buy_points(fund["id"], date_field="apply_date")
+    assert open_by_apply[0]["date"] == "2026-04-08"
+
+
 def test_storage_normalizes_old_schema(tmp_path: Path) -> None:
     db_path = tmp_path / "store.json"
     db_path.write_text(
