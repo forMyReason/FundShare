@@ -1070,12 +1070,14 @@ def render_trades_and_chart() -> None:
         )
         fig.update_yaxes(dtick=nav_dtick)
     st.plotly_chart(fig, use_container_width=True)
-    st.radio(
-        "区间",
-        ["近3月", "近6月", "近1年", "近3年", "近5年", "全部"],
-        horizontal=True,
-        key=chart_key,
-    )
+    _r1, r_mid, _r3 = st.columns([1, 3, 1])
+    with r_mid:
+        st.radio(
+            "区间",
+            ["近3月", "近6月", "近1年", "近3年", "近5年", "全部"],
+            horizontal=True,
+            key=chart_key,
+        )
 
 tab1, tab2, tab3, tab4 = st.tabs(["组合总览", "基金管理", "交易与净值", "维护"])
 with tab1:
