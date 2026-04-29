@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from datetime import datetime
 from typing import Any
 
@@ -23,9 +24,19 @@ class FundApiClient:
 
     def _fetch_fund_js(self, code: str) -> str:
         url = f"http://fund.eastmoney.com/pingzhongdata/{code}.js"
-        resp = requests.get(url, timeout=self.timeout)
-        resp.raise_for_status()
-        return resp.text
+        last_exc: requests.RequestException | None = None
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, timeout=self.timeout)
+                resp.raise_for_status()
+                return resp.text
+            except requests.RequestException as e:
+                last_exc = e
+                if attempt < 2:
+                    time.sleep(0.35 * (attempt + 1))
+        if last_exc is None:
+            raise RuntimeError("unexpected fetch state")
+        raise last_exc
 
     @staticmethod
     def _extract_name(js_text: str) -> str:

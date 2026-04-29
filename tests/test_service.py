@@ -441,6 +441,32 @@ def test_fund_api_target_before_all_data_raises() -> None:
         FundApiClient._extract_nav_for_date(js_text, "2024-03-31")
 
 
+def test_fund_api_retries_on_transient_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    def _fake_get(url: str, timeout: float):  # noqa: ANN001
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise requests.ConnectionError("down")
+
+        class _Ok:
+            text = 'var fS_name = "R"; var Data_netWorthTrend = [{"x":1711900800000,"y":1.2}];'
+
+            @staticmethod
+            def raise_for_status() -> None:
+                return None
+
+        return _Ok()
+
+    monkeypatch.setattr(requests, "get", _fake_get)
+    monkeypatch.setattr("fundshare.fund_api.time.sleep", lambda *_a, **_k: None)
+    client = FundApiClient()
+    name, nav = client.fetch_name_and_nav("000001", "2024-04-01")
+    assert name == "R"
+    assert nav == 1.2
+    assert calls["n"] == 2
+
+
 def test_fund_api_http_error_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
     class _Resp:
         text = ""
