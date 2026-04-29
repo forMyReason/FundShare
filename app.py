@@ -464,20 +464,35 @@ def render_maintenance() -> None:
     if not funds:
         st.info("暂无基金数据。")
         return
+    ui_seq = {int(f["id"]): i + 1 for i, f in enumerate(funds)}
+    maint_labels = {
+        f"[#{ui_seq[int(f['id'])]}] {_format_fund_label(f)}": int(f["id"])
+        for f in funds
+    }
 
+    maint_df = pd.DataFrame(
+        [
+            {
+                "序号": ui_seq[int(f["id"])],
+                "代码": f["code"],
+                "名称": f["name"],
+                "当前净值": f["current_nav"],
+            }
+            for f in funds
+        ]
+    )
     st.dataframe(
-        pd.DataFrame(funds).rename(columns={"code": "代码", "name": "名称", "current_nav": "当前净值"}),
+        maint_df,
         use_container_width=True,
         hide_index=True,
         height=min(320, 52 + len(funds) * 36),
     )
 
     with st.expander("删除基金（无持仓时）"):
-        del_opts = {_format_fund_label(f): f["id"] for f in funds}
-        del_pick = st.selectbox("选择要删除的基金", options=list(del_opts.keys()), key="maint_fund_delete_pick")
+        del_pick = st.selectbox("选择要删除的基金", options=list(maint_labels.keys()), key="maint_fund_delete_pick")
         if st.button("确认删除该基金及其历史净值与交易", key="maint_fund_delete_btn"):
             try:
-                service.delete_fund(del_opts[del_pick])
+                service.delete_fund(maint_labels[del_pick])
             except DomainError as e:
                 st.error(str(e))
             else:
@@ -485,21 +500,19 @@ def render_maintenance() -> None:
                 st.rerun()
 
     with st.expander("一键清空某基金的所有记录（交易+净值）", expanded=False):
-        clr_opts = {_format_fund_label(f): f["id"] for f in funds}
-        clr_pick = st.selectbox("选择要清空记录的基金", options=list(clr_opts.keys()), key="maint_fund_clear_pick")
+        clr_pick = st.selectbox("选择要清空记录的基金", options=list(maint_labels.keys()), key="maint_fund_clear_pick")
         clr_confirm = st.checkbox("我确认清空该基金全部交易与净值记录", value=False, key="maint_fund_clear_confirm")
         if st.button("确认清空该基金记录", key="maint_fund_clear_btn", type="primary"):
             if not clr_confirm:
                 st.error("请先勾选确认。")
             else:
-                service.clear_fund_records(clr_opts[clr_pick])
+                service.clear_fund_records(maint_labels[clr_pick])
                 st.success("该基金历史记录已清空。")
                 st.rerun()
 
     with st.expander("删除买入/卖出记录", expanded=False):
-        tx_fund_opts = {_format_fund_label(f): f["id"] for f in funds}
-        tx_fund_pick = st.selectbox("选择基金", options=list(tx_fund_opts.keys()), key="maint_tx_fund_pick")
-        tx_fund_id = tx_fund_opts[tx_fund_pick]
+        tx_fund_pick = st.selectbox("选择基金", options=list(maint_labels.keys()), key="maint_tx_fund_pick")
+        tx_fund_id = maint_labels[tx_fund_pick]
         tx_rows = service.get_transactions(tx_fund_id, date_field="confirm_date")
         if not tx_rows:
             st.caption("该基金暂无交易记录。")
