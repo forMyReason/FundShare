@@ -977,6 +977,8 @@ def render_trades_and_chart() -> None:
         key=f"nav_dod_{fund_id}",
     )
     nav_pct = (nav_df["nav"].astype(float).pct_change() * 100.0).fillna(0.0)
+    nav_base = float(nav_df["nav"].iloc[0]) if not nav_df.empty else 1.0
+    nav_dtick = max(0.0001, round(nav_base * 0.04, 4))
 
     if show_nav_dod:
         fig = make_subplots(specs=[[{"secondary_y": True}]])
@@ -1027,6 +1029,7 @@ def render_trades_and_chart() -> None:
         fig.update_xaxes(title_text="日期")
         fig.update_yaxes(title_text="净值", secondary_y=False)
         fig.update_yaxes(title_text="环比涨跌幅 %", secondary_y=True)
+        fig.update_yaxes(dtick=nav_dtick, secondary_y=False)
     else:
         fig = go.Figure()
         fig.add_trace(
@@ -1065,6 +1068,7 @@ def render_trades_and_chart() -> None:
             xaxis_rangeslider_visible=True,
             legend={"orientation": "h", "y": 1.05, "x": 0.0},
         )
+        fig.update_yaxes(dtick=nav_dtick)
     st.plotly_chart(fig, use_container_width=True)
     st.radio(
         "区间",
