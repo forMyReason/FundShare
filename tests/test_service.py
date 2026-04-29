@@ -111,6 +111,14 @@ def test_duplicate_fund_code_rejected(service: PortfolioService) -> None:
         service.add_fund("200001", "重复代码基金2", 1.1, "2026-04-02")
 
 
+def test_fund_code_format_validation(service: PortfolioService) -> None:
+    with pytest.raises(ValueError):
+        service.add_fund("abc", "格式错误", 1.0, "2026-04-01")
+    with pytest.raises(ValueError):
+        service.auto_fetch_fund_info("12345", "2026-04-01")
+    assert service.normalize_fund_code(" 000001 ") == "000001"
+
+
 def test_trade_price_and_shares_must_be_positive(service: PortfolioService) -> None:
     fund = service.add_fund("300001", "正数校验基金", 1.0, "2026-04-01")
     with pytest.raises(ValueError):

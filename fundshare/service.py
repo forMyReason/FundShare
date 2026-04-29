@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 from io import StringIO
+import re
 from typing import Any
 
 from .fund_api import FundApiClient
@@ -31,11 +32,9 @@ class PortfolioService:
 
     def add_fund(self, code: str, name: str, current_nav: float, nav_date: str | None = None) -> dict[str, Any]:
         data = self._load()
-        normalized_code = code.strip()
-        if not normalized_code:
-            raise ValueError("基金代码不能为空")
+        normalized_code = self.normalize_fund_code(code)
         if any(f["code"] == normalized_code for f in data["funds"]):
-            raise ValueError("基金代码已存在")
+            raise ValueError("基金代码已存在，请勿重复添加")
         if float(current_nav) <= 0:
             raise ValueError("基金净值必须大于0")
         fund = Fund(
@@ -194,7 +193,16 @@ class PortfolioService:
         return round(self._total_remaining_shares(data, fund_id), 4)
 
     def auto_fetch_fund_info(self, code: str, target_date: str) -> tuple[str, float]:
-        return self.api_client.fetch_name_and_nav(code, target_date)
+        return self.api_client.fetch_name_and_nav(self.normalize_fund_code(code), target_date)
+
+    @staticmethod
+    def normalize_fund_code(code: str) -> str:
+        normalized = code.strip()
+        if not normalized:
+            raise ValueError("基金代码不能为空")
+        if not re.fullmatch(r"\d{6}", normalized):
+            raise ValueError("基金代码格式错误，应为6位数字")
+        return normalized
 
     def export_transactions_csv(self, fund_id: int, date_field: str = "confirm_date") -> str:
         txs = self.get_transactions(fund_id, date_field=date_field)
