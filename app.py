@@ -931,7 +931,7 @@ def render_trades_and_chart() -> None:
         return
     tx_all = service.get_transactions(fund_id, date_field="confirm_date")
     buy_lots_all = _buy_lot_status_from_transactions(tx_all)
-    buy_points = [
+    buy_points_raw = [
         {
             "date": r["date"],
             "price": float(r["price"]),
@@ -940,6 +940,22 @@ def render_trades_and_chart() -> None:
         }
         for r in buy_lots_all
     ]
+    if buy_points_raw:
+        buy_df_all = pd.DataFrame(buy_points_raw)
+        agg_df = (
+            buy_df_all.groupby("date", as_index=False)
+            .agg(
+                buy_count=("date", "size"),
+                original_shares=("original_shares", "sum"),
+                remaining_shares=("remaining_shares", "sum"),
+                weighted_cost=("price", lambda s: float((s * buy_df_all.loc[s.index, "original_shares"]).sum())),
+            )
+            .sort_values("date")
+        )
+        agg_df["price"] = agg_df["weighted_cost"] / agg_df["original_shares"].where(agg_df["original_shares"] > 1e-12, 1.0)
+        buy_points = agg_df[["date", "price", "buy_count", "original_shares", "remaining_shares"]].to_dict("records")
+    else:
+        buy_points = []
     buy_points = service.filter_records_by_date_range(buy_points, "date", win_start, win_end)
 
     gaps = service.nav_point_calendar_gaps(nav_filtered, min_gap_days=14)
@@ -994,7 +1010,7 @@ def render_trades_and_chart() -> None:
                     name="买入点",
                     marker={"color": "#f25278", "size": 8, "symbol": "circle"},
                     text=open_df.apply(
-                        lambda row: f"买入份额: {float(row['original_shares']):.2f} | 剩余份额: {float(row['remaining_shares']):.2f}",
+                        lambda row: f"当日买入笔数: {int(row['buy_count'])} | 买入份额: {float(row['original_shares']):.2f} | 剩余份额: {float(row['remaining_shares']):.2f}",
                         axis=1,
                     ),
                     hovertemplate="日期=%{x}<br>买入净值=%{y:.4f}<br>%{text}<extra></extra>",
@@ -1032,7 +1048,7 @@ def render_trades_and_chart() -> None:
                     name="买入点",
                     marker={"color": "#f25278", "size": 8, "symbol": "circle"},
                     text=open_df.apply(
-                        lambda row: f"买入份额: {float(row['original_shares']):.2f} | 剩余份额: {float(row['remaining_shares']):.2f}",
+                        lambda row: f"当日买入笔数: {int(row['buy_count'])} | 买入份额: {float(row['original_shares']):.2f} | 剩余份额: {float(row['remaining_shares']):.2f}",
                         axis=1,
                     ),
                     hovertemplate="日期=%{x}<br>买入净值=%{y:.4f}<br>%{text}<extra></extra>",
