@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import time
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -14,6 +15,15 @@ st.title("个人基金交易记录器")
 st.caption("记录基金买卖，按FIFO抵扣份额，并在净值曲线上标注仍持有份额的买入点。")
 
 service = PortfolioService()
+
+
+def _is_locked(action: str, lock_seconds: float = 1.5) -> bool:
+    ts = st.session_state.get(f"{action}_locked_at", 0.0)
+    return (time.time() - ts) < lock_seconds
+
+
+def _lock(action: str) -> None:
+    st.session_state[f"{action}_locked_at"] = time.time()
 
 
 def _format_fund_label(fund: dict) -> str:
@@ -59,7 +69,7 @@ def render_fund_management() -> None:
         value=st.session_state["new_fund_code"],
         placeholder="如 161725",
     )
-    add_clicked = c2.button("按代码自动新增基金", use_container_width=True)
+    add_clicked = c2.button("按代码自动新增基金", use_container_width=True, disabled=_is_locked("add_fund"))
 
     error_msg = st.session_state.get("new_fund_fetch_error", "")
     if error_msg:
@@ -78,6 +88,7 @@ def render_fund_management() -> None:
                 service.add_fund(code, name, nav, date.today().isoformat())
                 st.success(f"基金已新增：{name}，当前净值 {nav:.4f}")
                 st.session_state["new_fund_code"] = ""
+                _lock("add_fund")
 
     funds = service.list_funds()
     if not funds:
@@ -150,7 +161,7 @@ def render_trades_and_chart() -> None:
             shares = st.number_input("买入份额", min_value=0.0001, value=100.0, step=1.0, format="%.4f")
             amount = round(price * shares, 4)
             st.write(f"自动计算金额: **{amount}**")
-            submitted = st.form_submit_button("记录买入")
+            submitted = st.form_submit_button("记录买入", disabled=_is_locked("buy_tx"))
             if submitted:
                 try:
                     service.add_buy(fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, shares)
@@ -158,6 +169,7 @@ def render_trades_and_chart() -> None:
                     st.error(str(e))
                 else:
                     st.success("买入记录已保存。")
+                    _lock("buy_tx")
 
     with t2:
         with st.form("sell_form", clear_on_submit=True):
@@ -190,7 +202,7 @@ def render_trades_and_chart() -> None:
                 format="%.4f",
                 key="sell_shares",
             )
-            submitted = st.form_submit_button("记录卖出")
+            submitted = st.form_submit_button("记录卖出", disabled=_is_locked("sell_tx"))
             if submitted:
                 try:
                     service.add_sell(fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, shares)
@@ -198,6 +210,7 @@ def render_trades_and_chart() -> None:
                     st.error(str(e))
                 else:
                     st.success("卖出记录已保存。")
+                    _lock("sell_tx")
 
     filter_c1, filter_c2 = st.columns(2)
     tx_start = filter_c1.date_input("交易筛选开始日期", value=date.today().replace(day=1), key="tx_filter_start")
