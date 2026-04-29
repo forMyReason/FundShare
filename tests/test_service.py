@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+import requests
 
 from fundshare.fund_api import FundApiClient
 from fundshare.service import PortfolioService
@@ -237,4 +238,50 @@ def test_auto_fetch_fund_info_with_mock(monkeypatch: pytest.MonkeyPatch) -> None
     name, nav = client.fetch_name_and_nav("000001", "2024-04-01")
     assert name == "示例基金"
     assert nav == 1.2345
+
+
+def test_fund_api_empty_code_raises() -> None:
+    client = FundApiClient()
+    with pytest.raises(ValueError):
+        client.fetch_name_and_nav("", "2024-04-01")
+
+
+def test_fund_api_missing_name_raises() -> None:
+    with pytest.raises(ValueError):
+        FundApiClient._extract_name("var other='x';")
+
+
+def test_fund_api_missing_trend_raises() -> None:
+    js_text = 'var fS_name = "示例基金";'
+    with pytest.raises(ValueError):
+        FundApiClient._extract_nav_for_date(js_text, "2024-04-01")
+
+
+def test_fund_api_empty_trend_raises() -> None:
+    js_text = 'var Data_netWorthTrend = [];'
+    with pytest.raises(ValueError):
+        FundApiClient._extract_nav_for_date(js_text, "2024-04-01")
+
+
+def test_fund_api_target_before_all_data_raises() -> None:
+    js_text = 'var Data_netWorthTrend = [{"x":1711987200000,"y":1.3}];'
+    with pytest.raises(ValueError):
+        FundApiClient._extract_nav_for_date(js_text, "2024-03-31")
+
+
+def test_fund_api_http_error_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Resp:
+        text = ""
+
+        @staticmethod
+        def raise_for_status() -> None:
+            raise requests.HTTPError("boom")
+
+    def _fake_get(url: str, timeout: float):  # noqa: ANN001
+        return _Resp()
+
+    monkeypatch.setattr(requests, "get", _fake_get)
+    client = FundApiClient()
+    with pytest.raises(requests.HTTPError):
+        client.fetch_name_and_nav("000001", "2024-04-01")
 

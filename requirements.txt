@@ -3,3 +3,4 @@ plotly
 pandas
 pytest
 requests
+pytest-cov

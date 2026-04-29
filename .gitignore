@@ -5,3 +5,5 @@ __pycache__/
 data/store.json
 data/store.json.bak
 .cursor/
+.coverage
+coverage.xml
