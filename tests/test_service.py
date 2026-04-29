@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 import pytest
 import requests
@@ -318,6 +319,42 @@ def test_export_portfolio_csv(service: PortfolioService) -> None:
     assert "code,name,holding_shares" in text.replace("\r\n", "\n")
     assert "760001" in text
     assert "1.1" in text
+
+
+def test_import_transactions_json_success(service: PortfolioService) -> None:
+    f = service.add_fund("770001", "JSON导入", 1.0, "2026-01-01")
+    payload = json.dumps(
+        {
+            "fund_code": "770001",
+            "transactions": [
+                {
+                    "tx_type": "buy",
+                    "apply_date": "2026-02-01",
+                    "confirm_date": "2026-02-02",
+                    "price": 1.0,
+                    "shares": 10.0,
+                },
+            ],
+        }
+    )
+    assert service.import_transactions_json(payload) == 1
+    assert len(service.get_transactions(f["id"])) == 1
+
+
+def test_import_transactions_json_validation(service: PortfolioService) -> None:
+    service.add_fund("770002", "校验", 1.0, "2026-01-01")
+    with pytest.raises(ValueError):
+        service.import_transactions_json("{}")
+    with pytest.raises(ValueError):
+        service.import_transactions_json('{"fund_code":"770002","transactions":[]}')
+    bad = json.dumps(
+        {
+            "fund_code": "770002",
+            "transactions": [{"tx_type": "buy", "apply_date": "x", "confirm_date": "2026-02-02", "price": 1, "shares": 1}],
+        }
+    )
+    with pytest.raises(ValueError):
+        service.import_transactions_json(bad)
 
 
 def test_portfolio_overview_aggregates_totals(service: PortfolioService) -> None:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+import json
 import time
 
 import pandas as pd
@@ -262,6 +263,46 @@ def render_trades_and_chart() -> None:
             date_field=date_field,
         )
     transactions = service.filter_transactions_by_type(transactions, tx_type=tx_type_map[tx_type_label])
+    st.markdown("**批量导入交易（JSON）**")
+    st.caption(
+        '根字段：`fund_code`（6位）与 `transactions` 数组；每条含 `tx_type`（buy/sell）、'
+        '`apply_date`、`confirm_date`（YYYY-MM-DD）、`price`、`shares`。'
+    )
+    imp_col1, imp_col2 = st.columns(2)
+    with imp_col1:
+        tx_import_text = st.text_area("粘贴 JSON", height=120, key=f"tx_import_text_{fund_id}")
+    with imp_col2:
+        sample_payload = json.dumps(
+            {
+                "fund_code": selected_fund["code"],
+                "transactions": [
+                    {
+                        "tx_type": "buy",
+                        "apply_date": "2026-01-02",
+                        "confirm_date": "2026-01-03",
+                        "price": 1.0,
+                        "shares": 10.0,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+        st.download_button(
+            "下载示例（当前基金）",
+            sample_payload,
+            file_name=f"import_sample_{selected_fund['code']}.json",
+            mime="application/json",
+        )
+    if st.button("执行 JSON 导入", key=f"tx_import_run_{fund_id}"):
+        if not tx_import_text.strip():
+            st.warning("请先粘贴 JSON。")
+        else:
+            try:
+                n_imported = service.import_transactions_json(tx_import_text)
+                st.success(f"已成功导入 {n_imported} 条交易。")
+            except ValueError as e:
+                st.error(str(e))
     if transactions:
         tx_df = pd.DataFrame(transactions)
         tx_df = tx_df.rename(

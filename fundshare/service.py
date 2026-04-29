@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import json
 from datetime import date, datetime, timedelta
 from io import StringIO
 import re
@@ -284,6 +285,53 @@ class PortfolioService:
                 ]
             )
         return buf.getvalue()
+
+    @staticmethod
+    def _parse_import_tx_row(row: dict[str, Any]) -> tuple[str, str, str, float, float]:
+        try:
+            tx_type = str(row["tx_type"]).strip().lower()
+            apply_date = str(row["apply_date"]).strip()
+            confirm_date = str(row["confirm_date"]).strip()
+            price = float(row["price"])
+            shares = float(row["shares"])
+        except (KeyError, TypeError, ValueError) as e:
+            raise ValueError(f"交易记录字段不完整或类型错误: {e}") from e
+        if tx_type not in ("buy", "sell"):
+            raise ValueError("tx_type 必须是 buy 或 sell")
+        datetime.strptime(apply_date, "%Y-%m-%d")
+        datetime.strptime(confirm_date, "%Y-%m-%d")
+        return tx_type, apply_date, confirm_date, price, shares
+
+    def import_transactions_json(self, json_text: str) -> int:
+        try:
+            payload = json.loads(json_text)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"JSON 解析失败: {e}") from e
+        if not isinstance(payload, dict):
+            raise ValueError("JSON 根节点必须是对象")
+        fund_code_raw = payload.get("fund_code")
+        if not fund_code_raw:
+            raise ValueError("缺少 fund_code")
+        rows = payload.get("transactions")
+        if not isinstance(rows, list) or not rows:
+            raise ValueError("transactions 必须是非空数组")
+        data = self._load()
+        normalized = self.normalize_fund_code(str(fund_code_raw))
+        fund = next((f for f in data["funds"] if f["code"] == normalized), None)
+        if not fund:
+            raise ValueError("基金不存在，请先添加该基金")
+        fund_id = int(fund["id"])
+        count = 0
+        for row in rows:
+            if not isinstance(row, dict):
+                raise ValueError("transactions 中每项必须是对象")
+            tx_type, apply_date, confirm_date, price, shares = self._parse_import_tx_row(row)
+            if tx_type == "buy":
+                self.add_buy(fund_id, apply_date, confirm_date, price, shares)
+            else:
+                self.add_sell(fund_id, apply_date, confirm_date, price, shares)
+            count += 1
+        return count
 
     def get_portfolio_overview(self) -> dict[str, float]:
         rows = self.get_all_position_summaries()
