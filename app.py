@@ -256,7 +256,7 @@ def render_fund_management() -> None:
         with st.expander(exp_title, expanded=False):
             k1, k2, k3, k4, k5 = st.columns(5)
             k1.metric("基金代码", str(f["code"]))
-            k2.metric("持有份额", f"{float(s['holding_shares']):.4f}")
+            k2.metric("持有份额", f"{float(s['holding_shares']):.2f}")
             k3.metric("持有收益", f"{hold_pnl:.2f}")
             k4.metric("持有收益率", f"{hold_ratio:.2f}%")
             k5.metric("累计盈亏", f"{cum_pnl:.2f}")
@@ -368,9 +368,9 @@ def render_fund_management() -> None:
                             customdata=buy_df[["original_shares", "sold_shares", "remaining_shares"]],
                             hovertemplate=(
                                 "买入日=%{x}<br>点位=%{y:.2f}%"
-                                "<br>原始份额=%{customdata[0]:.4f}"
-                                "<br>已卖份额=%{customdata[1]:.4f}"
-                                "<br>剩余份额=%{customdata[2]:.4f}<extra></extra>"
+                                "<br>原始份额=%{customdata[0]:.2f}"
+                                "<br>已卖份额=%{customdata[1]:.2f}"
+                                "<br>剩余份额=%{customdata[2]:.2f}<extra></extra>"
                             ),
                         )
                     )
@@ -523,7 +523,7 @@ def render_maintenance() -> None:
                 height=min(260, 52 + len(tx_preview) * 34),
             )
             tx_label_map = {
-                f"#{tx['id']} {tx['tx_type']} {tx['confirm_date']} 份额:{float(tx['shares']):.4f} 价格:{float(tx['price']):.4f}": int(tx["id"])
+                f"#{tx['id']} {tx['tx_type']} {tx['confirm_date']} 份额:{float(tx['shares']):.2f} 价格:{float(tx['price']):.4f}": int(tx["id"])
                 for tx in tx_rows
             }
             tx_pick_label = st.selectbox("选择要删除的交易", options=list(tx_label_map.keys()), key="maint_tx_delete_pick")
@@ -566,7 +566,7 @@ def render_trades_and_chart() -> None:
     summary = service.get_position_summary(fund_id, date_field=date_field)
     st.markdown("##### 持仓快照")
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("持仓份额", f"{summary['holding_shares']:.4f}")
+    m1.metric("持仓份额", f"{summary['holding_shares']:.2f}")
     m2.metric("持仓成本", f"{summary['holding_cost']:.2f}")
     m3.metric("当前净值", f"{summary['current_nav']:.4f}")
     m4.metric("估值", f"{summary['market_value']:.2f}")
@@ -613,7 +613,7 @@ def render_trades_and_chart() -> None:
                     min_value=0.0001,
                     value=preset_val,
                     step=1.0,
-                    format="%.4f",
+                    format="%.2f",
                     disabled=not is_custom,
                     key=f"buy_shares_{fund_id}",
                 )
@@ -625,7 +625,7 @@ def render_trades_and_chart() -> None:
                     min_value=0.0001,
                     value=100.0,
                     step=1.0,
-                    format="%.4f",
+                    format="%.2f",
                     key=f"buy_shares_amt_mode_{fund_id}",
                 )
                 amount = st.number_input(
@@ -657,7 +657,7 @@ def render_trades_and_chart() -> None:
     with t2:
         with st.container(border=True):
             st.markdown("**卖出**")
-            st.caption(f"当前可卖出份额：{remaining_shares:.4f}")
+            st.caption(f"当前可卖出份额：{remaining_shares:.2f}")
             sell_mode = st.radio(
                 "卖出方式",
                 ["FIFO 自动", "指定买入批次"],
@@ -670,7 +670,7 @@ def render_trades_and_chart() -> None:
             if sell_mode == "指定买入批次":
                 lots = service.get_sellable_buy_lots(fund_id, date_field="confirm_date")
                 lot_map = {
-                    f"买入#{int(l['buy_id'])} {l['date']} 价:{float(l['price']):.4f} 剩:{float(l['remaining_shares']):.4f}": l
+                    f"买入#{int(l['buy_id'])} {l['date']} 价:{float(l['price']):.4f} 剩:{float(l['remaining_shares']):.2f}": l
                     for l in lots
                     if float(l["remaining_shares"]) > 1e-9
                 }
@@ -684,13 +684,13 @@ def render_trades_and_chart() -> None:
                         max_value=max_sh,
                         value=max_sh,
                         step=1.0,
-                        format="%.4f",
+                        format="%.2f",
                         key=f"sell_lot_sh_{fund_id}_{int(lot['buy_id'])}",
                     )
                     if sh > 0:
                         picks.append({"buy_tx_id": int(lot["buy_id"]), "shares": float(sh)})
                         lot_total += float(sh)
-                st.caption(f"本次卖出总份额：{lot_total:.4f}")
+                st.caption(f"本次卖出总份额：{lot_total:.2f}")
 
             confirm_d = st.date_input("卖出确认日", value=date.today(), key=f"sell_confirm_date_{fund_id}")
             sell_entry_mode = st.radio(
@@ -719,7 +719,7 @@ def render_trades_and_chart() -> None:
                     max_value=max(0.0001, remaining_shares),
                     value=default_sell,
                     step=1.0,
-                    format="%.4f",
+                    format="%.2f",
                     key=f"sell_shares_{fund_id}_{sell_preset}_{sell_entry_mode}",
                 )
             else:
@@ -993,7 +993,7 @@ def render_trades_and_chart() -> None:
                     mode="markers",
                     name="仍持有买入点",
                     marker={"color": "red", "size": 10, "symbol": "circle"},
-                    text=open_df["remaining_shares"].apply(lambda v: f"剩余份额: {v:.4f}"),
+                    text=open_df["remaining_shares"].apply(lambda v: f"剩余份额: {v:.2f}"),
                     hovertemplate="日期=%{x}<br>买入净值=%{y}<br>%{text}<extra></extra>",
                 ),
                 secondary_y=False,
@@ -1027,7 +1027,7 @@ def render_trades_and_chart() -> None:
                     mode="markers",
                     name="仍持有买入点",
                     marker={"color": "red", "size": 10, "symbol": "circle"},
-                    text=open_df["remaining_shares"].apply(lambda v: f"剩余份额: {v:.4f}"),
+                    text=open_df["remaining_shares"].apply(lambda v: f"剩余份额: {v:.2f}"),
                     hovertemplate="日期=%{x}<br>买入净值=%{y}<br>%{text}<extra></extra>",
                 )
             )
