@@ -182,6 +182,19 @@ def test_storage_creates_backup_on_save(tmp_path: Path) -> None:
     assert backup_path.exists()
 
 
+def test_storage_rotated_backups_respect_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(JsonStorage, "MAX_ROTATED_BACKUPS", 3)
+    db_path = tmp_path / "store.json"
+    storage = JsonStorage(str(db_path))
+    data = storage.load()
+    for i in range(5):
+        data["_test_stamp"] = i
+        storage.save(data)
+    rot_dir = db_path.parent / "backups"
+    assert rot_dir.is_dir()
+    assert len(list(rot_dir.glob("store_*.json"))) == 3
+
+
 def test_data_persists_across_service_instances(tmp_path: Path) -> None:
     db_path = tmp_path / "persist.json"
     s1 = PortfolioService(JsonStorage(str(db_path)))

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,8 @@ DEFAULT_DB = {
 
 
 class JsonStorage:
+    MAX_ROTATED_BACKUPS = 10
+
     def __init__(self, db_path: str = "data/store.json") -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -36,7 +39,12 @@ class JsonStorage:
 
     def save(self, data: dict[str, Any]) -> None:
         self._atomic_write(data)
-        self._backup_path().write_text(self.db_path.read_text(encoding="utf-8"), encoding="utf-8")
+        text = self.db_path.read_text(encoding="utf-8")
+        self._backup_path().write_text(text, encoding="utf-8")
+        self._append_rotated_backup(text)
+
+    def _backup_dir(self) -> Path:
+        return self.db_path.parent / "backups"
 
     def _normalize(self, data: dict[str, Any]) -> dict[str, Any]:
         # Backward compatibility for old store.json created before nav_points/nav IDs were added.
@@ -64,9 +72,20 @@ class JsonStorage:
     def _backup_path(self) -> Path:
         return self.db_path.with_suffix(self.db_path.suffix + ".bak")
 
+    def _append_rotated_backup(self, text: str) -> None:
+        backup_root = self._backup_dir()
+        backup_root.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        dest = backup_root / f"{self.db_path.stem}_{stamp}.json"
+        dest.write_text(text, encoding="utf-8")
+        pattern = f"{self.db_path.stem}_*.json"
+        files = sorted(backup_root.glob(pattern))
+        cutoff = max(0, len(files) - self.MAX_ROTATED_BACKUPS)
+        for old in files[:cutoff]:
+            old.unlink(missing_ok=True)
+
     def _atomic_write(self, data: dict[str, Any]) -> None:
         tmp_path = self.db_path.with_suffix(self.db_path.suffix + ".tmp")
         with tmp_path.open("w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         tmp_path.replace(self.db_path)
-

@@ -4,6 +4,7 @@ __pycache__/
 *.pyc
 data/store.json
 data/store.json.bak
+data/backups/
 .cursor/
 .coverage
 coverage.xml
