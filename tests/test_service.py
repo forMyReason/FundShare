@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from fundshare.fund_api import FundApiClient
 from fundshare.service import PortfolioService
 from fundshare.storage import JsonStorage
 
@@ -35,4 +36,33 @@ def test_fifo_consumption_and_open_buy_points(service: PortfolioService) -> None
     assert len(open_points) == 1
     assert open_points[0]["price"] == 1.1
     assert open_points[0]["remaining_shares"] == 150
+
+
+def test_storage_normalizes_old_schema(tmp_path: Path) -> None:
+    db_path = tmp_path / "store.json"
+    db_path.write_text(
+        '{"funds":[],"transactions":[],"next_ids":{"fund":1,"tx":1}}',
+        encoding="utf-8",
+    )
+    storage = JsonStorage(str(db_path))
+    data = storage.load()
+    assert "nav_points" in data
+    assert "nav" in data["next_ids"]
+    assert data["next_ids"]["nav"] == 1
+
+
+def test_auto_fetch_fund_info_with_mock(monkeypatch: pytest.MonkeyPatch) -> None:
+    sample_js = """
+    var fS_name = "示例基金";
+    var Data_netWorthTrend = [{"x":1711900800000,"y":1.2345},{"x":1711987200000,"y":1.3}];
+    """
+
+    def _fake_fetch(self, code: str) -> str:  # noqa: ANN001
+        return sample_js
+
+    monkeypatch.setattr(FundApiClient, "_fetch_fund_js", _fake_fetch)
+    client = FundApiClient()
+    name, nav = client.fetch_name_and_nav("000001", "2024-04-01")
+    assert name == "示例基金"
+    assert nav == 1.2345
 

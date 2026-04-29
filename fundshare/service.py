@@ -3,13 +3,15 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
+from .fund_api import FundApiClient
 from .models import Fund, NavPoint, Transaction
 from .storage import JsonStorage
 
 
 class PortfolioService:
-    def __init__(self, storage: JsonStorage | None = None) -> None:
+    def __init__(self, storage: JsonStorage | None = None, api_client: FundApiClient | None = None) -> None:
         self.storage = storage or JsonStorage()
+        self.api_client = api_client or FundApiClient()
 
     def _load(self) -> dict[str, Any]:
         return self.storage.load()
@@ -143,4 +145,7 @@ class PortfolioService:
         bought = sum(tx["shares"] for tx in data["transactions"] if tx["fund_id"] == fund_id and tx["tx_type"] == "buy")
         sold = sum(tx["shares"] for tx in data["transactions"] if tx["fund_id"] == fund_id and tx["tx_type"] == "sell")
         return float(bought - sold)
+
+    def auto_fetch_fund_info(self, code: str, target_date: str) -> tuple[str, float]:
+        return self.api_client.fetch_name_and_nav(code, target_date)
 

@@ -22,19 +22,52 @@ def _format_fund_label(fund: dict) -> str:
 
 def render_fund_management() -> None:
     st.subheader("1) 基金基础信息管理")
-    with st.form("add_fund_form", clear_on_submit=True):
-        c1, c2, c3, c4 = st.columns(4)
-        code = c1.text_input("基金代码", placeholder="如 161725")
-        name = c2.text_input("基金名称", placeholder="如 招商中证白酒")
-        nav = c3.number_input("当前净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f")
-        nav_date = c4.date_input("净值日期", value=date.today())
-        submitted = st.form_submit_button("新增基金")
-        if submitted:
-            if not code.strip() or not name.strip():
-                st.error("基金代码和名称不能为空。")
-            else:
-                service.add_fund(code, name, nav, nav_date.isoformat())
-                st.success("基金已新增。")
+    if "new_fund_code" not in st.session_state:
+        st.session_state["new_fund_code"] = ""
+    if "new_fund_name" not in st.session_state:
+        st.session_state["new_fund_name"] = ""
+    if "new_fund_nav" not in st.session_state:
+        st.session_state["new_fund_nav"] = 1.0
+    if "new_fund_date" not in st.session_state:
+        st.session_state["new_fund_date"] = date.today()
+
+    c1, c2, c3, c4, c5 = st.columns([1.2, 1.5, 1.0, 1.1, 1.0])
+    st.session_state["new_fund_code"] = c1.text_input(
+        "基金代码", value=st.session_state["new_fund_code"], placeholder="如 161725"
+    )
+    st.session_state["new_fund_name"] = c2.text_input("基金名称", value=st.session_state["new_fund_name"])
+    st.session_state["new_fund_nav"] = c3.number_input(
+        "当前净值", min_value=0.0001, value=float(st.session_state["new_fund_nav"]), step=0.0001, format="%.4f"
+    )
+    st.session_state["new_fund_date"] = c4.date_input("净值日期", value=st.session_state["new_fund_date"])
+
+    if c5.button("自动获取名称和净值", use_container_width=True):
+        try:
+            auto_name, auto_nav = service.auto_fetch_fund_info(
+                st.session_state["new_fund_code"], st.session_state["new_fund_date"].isoformat()
+            )
+        except Exception as e:  # noqa: BLE001
+            st.error(f"自动获取失败：{e}")
+        else:
+            st.session_state["new_fund_name"] = auto_name
+            st.session_state["new_fund_nav"] = float(auto_nav)
+            st.success("已自动填充基金名称和当日净值。")
+            st.rerun()
+
+    if st.button("新增基金"):
+        code = st.session_state["new_fund_code"]
+        name = st.session_state["new_fund_name"]
+        nav = float(st.session_state["new_fund_nav"])
+        nav_date = st.session_state["new_fund_date"]
+        if not code.strip() or not name.strip():
+            st.error("基金代码和名称不能为空。")
+        else:
+            service.add_fund(code, name, nav, nav_date.isoformat())
+            st.success("基金已新增。")
+            st.session_state["new_fund_code"] = ""
+            st.session_state["new_fund_name"] = ""
+            st.session_state["new_fund_nav"] = 1.0
+            st.session_state["new_fund_date"] = date.today()
 
     funds = service.list_funds()
     if not funds:
