@@ -252,6 +252,18 @@ def test_filter_transactions_date_range_validation(service: PortfolioService) ->
         )
 
 
+def test_filter_transactions_by_type(service: PortfolioService) -> None:
+    fund = service.add_fund("750003", "类型筛选测试", 1.0, "2026-07-01")
+    service.add_buy(fund["id"], "2026-07-02", "2026-07-03", 1.0, 10)
+    service.add_sell(fund["id"], "2026-07-04", "2026-07-05", 1.1, 5)
+    txs = service.get_transactions(fund["id"])
+    assert len(service.filter_transactions_by_type(txs, "buy")) == 1
+    assert len(service.filter_transactions_by_type(txs, "sell")) == 1
+    assert len(service.filter_transactions_by_type(txs, "all")) == 2
+    with pytest.raises(ValueError):
+        service.filter_transactions_by_type(txs, "x")
+
+
 def test_portfolio_overview_aggregates_totals(service: PortfolioService) -> None:
     a = service.add_fund("730001", "组合A", 1.2, "2026-07-01")
     b = service.add_fund("730002", "组合B", 0.8, "2026-07-01")

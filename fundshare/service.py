@@ -143,6 +143,16 @@ class PortfolioService:
         txs = self.get_transactions(fund_id, date_field=date_field)
         return [tx for tx in txs if start_date <= tx[date_field] <= end_date]
 
+    @staticmethod
+    def filter_transactions_by_type(
+        transactions: list[dict[str, Any]], tx_type: str = "all"
+    ) -> list[dict[str, Any]]:
+        if tx_type == "all":
+            return transactions
+        if tx_type not in {"buy", "sell"}:
+            raise ValueError("tx_type must be all, buy or sell")
+        return [tx for tx in transactions if tx["tx_type"] == tx_type]
+
     def get_open_buy_points(self, fund_id: int, date_field: str = "confirm_date") -> list[dict[str, Any]]:
         buys = self.get_transactions(fund_id, date_field=date_field)
         lots: list[dict[str, Any]] = []

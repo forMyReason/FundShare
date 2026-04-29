@@ -202,6 +202,8 @@ def render_trades_and_chart() -> None:
     filter_c1, filter_c2 = st.columns(2)
     tx_start = filter_c1.date_input("交易筛选开始日期", value=date.today().replace(day=1), key="tx_filter_start")
     tx_end = filter_c2.date_input("交易筛选结束日期", value=date.today(), key="tx_filter_end")
+    tx_type_label = st.selectbox("交易类型筛选", ["全部", "仅买入", "仅卖出"], index=0)
+    tx_type_map = {"全部": "all", "仅买入": "buy", "仅卖出": "sell"}
     if tx_start > tx_end:
         st.warning("开始日期不能晚于结束日期，将显示全部交易。")
         transactions = service.get_transactions(fund_id, date_field=date_field)
@@ -212,6 +214,7 @@ def render_trades_and_chart() -> None:
             tx_end.isoformat(),
             date_field=date_field,
         )
+    transactions = service.filter_transactions_by_type(transactions, tx_type=tx_type_map[tx_type_label])
     if transactions:
         tx_df = pd.DataFrame(transactions)
         tx_df = tx_df.rename(
