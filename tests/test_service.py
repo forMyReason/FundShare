@@ -272,6 +272,28 @@ def test_filter_transactions_by_type(service: PortfolioService) -> None:
         service.filter_transactions_by_type(txs, "x")
 
 
+def test_classify_sell_risk_levels() -> None:
+    assert PortfolioService.classify_sell_risk(100.0, 30.0) == "none"
+    assert PortfolioService.classify_sell_risk(100.0, 50.0) == "large"
+    assert PortfolioService.classify_sell_risk(100.0, 100.0) == "clearout"
+    assert PortfolioService.classify_sell_risk(100.0, 49.99, eps=1e-6) == "none"
+    assert PortfolioService.classify_sell_risk(0.0, 10.0) == "none"
+
+
+def test_filter_records_by_date_range_static() -> None:
+    rows = [{"date": "2026-01-01"}, {"date": "2026-06-01"}, {"date": "2026-12-01"}]
+    filtered = PortfolioService.filter_records_by_date_range(rows, "date", "2026-03-01", "2026-09-01")
+    assert [r["date"] for r in filtered] == ["2026-06-01"]
+
+
+def test_nav_chart_date_window_presets() -> None:
+    pts = [{"date": "2026-01-01", "nav": 1.0}, {"date": "2026-12-31", "nav": 1.2}]
+    assert PortfolioService.nav_chart_date_window(pts, "全部") == (None, None)
+    start, end = PortfolioService.nav_chart_date_window(pts, "近1月")
+    assert end == "2026-12-31"
+    assert start == "2026-12-01"
+
+
 def test_portfolio_overview_aggregates_totals(service: PortfolioService) -> None:
     a = service.add_fund("730001", "组合A", 1.2, "2026-07-01")
     b = service.add_fund("730002", "组合B", 0.8, "2026-07-01")

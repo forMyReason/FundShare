@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from io import StringIO
 import re
 from typing import Any
@@ -280,4 +280,51 @@ class PortfolioService:
             raise ValueError("价格必须大于0")
         if float(shares) <= 0:
             raise ValueError("份额必须大于0")
+
+    @staticmethod
+    def classify_sell_risk(
+        remaining_shares: float,
+        sell_shares: float,
+        *,
+        large_ratio: float = 0.5,
+        eps: float = 1e-9,
+    ) -> str:
+        """Return none | large | clearout. Assumes sell_shares <= remaining (UI enforces max)."""
+        if remaining_shares <= eps or sell_shares <= eps:
+            return "none"
+        if sell_shares + eps >= remaining_shares:
+            return "clearout"
+        if sell_shares + eps >= remaining_shares * large_ratio:
+            return "large"
+        return "none"
+
+    @staticmethod
+    def filter_records_by_date_range(
+        records: list[dict[str, Any]],
+        date_key: str,
+        start_iso: str | None,
+        end_iso: str | None,
+    ) -> list[dict[str, Any]]:
+        out = records
+        if start_iso is not None:
+            out = [r for r in out if r[date_key] >= start_iso]
+        if end_iso is not None:
+            out = [r for r in out if r[date_key] <= end_iso]
+        return out
+
+    @staticmethod
+    def nav_chart_date_window(
+        nav_points: list[dict[str, Any]], preset: str
+    ) -> tuple[str | None, str | None]:
+        """preset: 全部 | 近1月 | 近3月 | 近1年. Returns (start_iso, end_iso) inclusive; None means unbounded."""
+        if not nav_points or preset == "全部":
+            return None, None
+        dates = sorted(p["date"] for p in nav_points)
+        end = dates[-1]
+        end_d = datetime.strptime(end, "%Y-%m-%d").date()
+        days = {"近1月": 30, "近3月": 90, "近1年": 365}.get(preset, 0)
+        if days <= 0:
+            return None, None
+        start_d = end_d - timedelta(days=days)
+        return start_d.isoformat(), end
 

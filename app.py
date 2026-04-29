@@ -158,7 +158,20 @@ def render_trades_and_chart() -> None:
                 price = st.number_input(
                     "买入确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="buy_price"
                 )
-            shares = st.number_input("买入份额", min_value=0.0001, value=100.0, step=1.0, format="%.4f")
+            buy_preset = st.selectbox(
+                "买入份额快捷",
+                ["自定义", "100", "500", "1000", "5000"],
+                key=f"buy_preset_{fund_id}",
+            )
+            buy_default = 100.0 if buy_preset == "自定义" else float(buy_preset)
+            shares = st.number_input(
+                "买入份额",
+                min_value=0.0001,
+                value=buy_default,
+                step=1.0,
+                format="%.4f",
+                key=f"buy_shares_{fund_id}_{buy_preset}",
+            )
             amount = round(price * shares, 4)
             st.write(f"自动计算金额: **{amount}**")
             submitted = st.form_submit_button("记录买入", disabled=_is_locked("buy_tx"))
@@ -192,7 +205,19 @@ def render_trades_and_chart() -> None:
                 price = st.number_input(
                     "卖出确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="sell_price"
                 )
-            default_sell = min(100.0, remaining_shares) if remaining_shares > 0 else 0.0001
+            sell_preset = st.selectbox(
+                "卖出比例快捷",
+                ["自定义", "25%", "50%", "75%", "100%"],
+                key=f"sell_preset_{fund_id}",
+            )
+            if sell_preset == "自定义":
+                default_sell = min(100.0, remaining_shares) if remaining_shares > 0 else 0.0001
+            else:
+                pct = float(sell_preset.rstrip("%")) / 100.0
+                default_sell = max(
+                    0.0001,
+                    min(float(remaining_shares), float(remaining_shares) * pct) if remaining_shares > 0 else 0.0001,
+                )
             shares = st.number_input(
                 "卖出份额",
                 min_value=0.0001,
@@ -200,17 +225,26 @@ def render_trades_and_chart() -> None:
                 value=default_sell,
                 step=1.0,
                 format="%.4f",
-                key="sell_shares",
+                key=f"sell_shares_{fund_id}_{sell_preset}",
             )
+            sell_risk = service.classify_sell_risk(remaining_shares, float(shares))
+            sell_confirmed = True
+            if sell_risk in ("large", "clearout"):
+                tip = "清仓卖出" if sell_risk == "clearout" else "大额卖出（≥50%持仓）"
+                st.warning(f"{tip}：请勾选下方确认后再提交。")
+                sell_confirmed = st.checkbox("我已核对份额与价格，确认提交本次卖出", value=False, key=f"sell_confirm_{fund_id}")
             submitted = st.form_submit_button("记录卖出", disabled=_is_locked("sell_tx"))
             if submitted:
-                try:
-                    service.add_sell(fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, shares)
-                except ValueError as e:
-                    st.error(str(e))
+                if sell_risk in ("large", "clearout") and not sell_confirmed:
+                    st.error("请先勾选确认后再提交卖出。")
                 else:
-                    st.success("卖出记录已保存。")
-                    _lock("sell_tx")
+                    try:
+                        service.add_sell(fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, shares)
+                    except ValueError as e:
+                        st.error(str(e))
+                    else:
+                        st.success("卖出记录已保存。")
+                        _lock("sell_tx")
 
     filter_c1, filter_c2 = st.columns(2)
     tx_start = filter_c1.date_input("交易筛选开始日期", value=date.today().replace(day=1), key="tx_filter_start")
@@ -253,8 +287,20 @@ def render_trades_and_chart() -> None:
     nav_points = service.get_nav_points(fund_id)
     if not nav_points:
         return
-    nav_df = pd.DataFrame(nav_points).sort_values("date")
+    chart_range = st.radio(
+        "图表时间范围",
+        ["全部", "近1月", "近3月", "近1年"],
+        horizontal=True,
+        key=f"nav_chart_range_{fund_id}",
+    )
+    win_start, win_end = service.nav_chart_date_window(nav_points, chart_range)
+    nav_filtered = service.filter_records_by_date_range(nav_points, "date", win_start, win_end)
+    nav_df = pd.DataFrame(nav_filtered).sort_values("date")
+    if nav_df.empty:
+        st.info("当前时间范围内没有净值数据，请选择「全部」或更长区间。")
+        return
     open_buys = service.get_open_buy_points(fund_id, date_field=date_field)
+    open_buys = service.filter_records_by_date_range(open_buys, "date", win_start, win_end)
 
     fig = go.Figure()
     fig.add_trace(
