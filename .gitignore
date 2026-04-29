@@ -3,4 +3,5 @@ __pycache__/
 .pytest_cache/
 *.pyc
 data/store.json
+data/store.json.bak
 .cursor/
