@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from typing import Literal
 
 
@@ -40,6 +40,7 @@ class Transaction:
     shares: float
     amount: float
     fee: float
+    allocations: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return asdict(self)

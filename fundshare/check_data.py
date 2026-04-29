@@ -14,6 +14,34 @@ def run_check(db_path: str | None = None) -> int:
     fund_ids = {int(f["id"]) for f in data.get("funds", [])}
     bad_tx = [t for t in data.get("transactions", []) if int(t["fund_id"]) not in fund_ids]
     bad_nav = [p for p in data.get("nav_points", []) if int(p["fund_id"]) not in fund_ids]
+    bad_alloc = 0
+    txs = data.get("transactions", [])
+    buy_map = {int(t["id"]): t for t in txs if t.get("tx_type") == "buy"}
+    sold_by_buy: dict[int, float] = {}
+    for t in txs:
+        if t.get("tx_type") != "sell":
+            continue
+        allocs = t.get("allocations") or []
+        if not allocs:
+            continue
+        alloc_sum = 0.0
+        for a in allocs:
+            try:
+                bid = int(a["buy_tx_id"])
+                sh = float(a["shares"])
+            except (KeyError, TypeError, ValueError):
+                bad_alloc += 1
+                continue
+            alloc_sum += sh
+            if bid not in buy_map:
+                bad_alloc += 1
+                continue
+            sold_by_buy[bid] = sold_by_buy.get(bid, 0.0) + sh
+        if abs(alloc_sum - float(t.get("shares", 0.0))) > 1e-6:
+            bad_alloc += 1
+    for bid, sold in sold_by_buy.items():
+        if sold - float(buy_map[bid].get("shares", 0.0)) > 1e-6:
+            bad_alloc += 1
     ok = True
     if bad_tx:
         ok = False
@@ -21,6 +49,9 @@ def run_check(db_path: str | None = None) -> int:
     if bad_nav:
         ok = False
         print(f"orphan nav_points: {len(bad_nav)} (fund_id not in funds)", file=sys.stderr)
+    if bad_alloc:
+        ok = False
+        print(f"invalid allocations: {bad_alloc} (sum mismatch / bad buy_tx_id / over-allocated)", file=sys.stderr)
     return 0 if ok else 1
 
 

@@ -127,6 +127,7 @@ class PortfolioService:
             shares=float(shares),
             amount=q_money(float(price) * float(shares)),
             fee=q_money(float(fee)),
+            allocations=[],
         ).to_dict()
         data["transactions"].append(tx)
         self._save(data)
@@ -148,6 +149,7 @@ class PortfolioService:
         remain = self._total_remaining_shares(data, fund_id)
         if sell_shares > remain + 1e-9:
             raise DomainError("卖出份额超过当前持仓")
+        allocations = self._build_fifo_allocations(data, fund_id, sell_shares)
         tx = Transaction(
             id=self._next_id(data, "tx"),
             fund_id=fund_id,
@@ -158,6 +160,60 @@ class PortfolioService:
             shares=sell_shares,
             amount=q_money(float(price) * sell_shares),
             fee=q_money(float(fee)),
+            allocations=allocations,
+        ).to_dict()
+        data["transactions"].append(tx)
+        self._save(data)
+        return tx
+
+    def add_sell_by_lots(
+        self,
+        fund_id: int,
+        apply_date: str,
+        confirm_date: str,
+        price: float,
+        picks: list[dict[str, Any]],
+        fee: float = 0.0,
+    ) -> dict[str, Any]:
+        data = self._load()
+        self._ensure_fund(data, fund_id)
+        if not picks:
+            raise DomainError("请至少选择一条买入批次")
+        lots = self._build_lot_states(data, fund_id, date_field="confirm_date")
+        open_map = {int(l["buy_id"]): float(l["remaining_shares"]) for l in lots if float(l["remaining_shares"]) > 1e-9}
+        allocations: list[dict[str, float]] = []
+        total_shares = 0.0
+        seen_ids: set[int] = set()
+        for p in picks:
+            try:
+                buy_tx_id = int(p["buy_tx_id"])
+                sh = float(p["shares"])
+            except (KeyError, TypeError, ValueError) as e:
+                raise DomainError(f"批次选择格式错误: {p}") from e
+            if sh <= 0:
+                raise DomainError("批次卖出份额必须大于0")
+            if buy_tx_id in seen_ids:
+                raise DomainError("同一买入批次请只填写一次")
+            seen_ids.add(buy_tx_id)
+            remain = open_map.get(buy_tx_id)
+            if remain is None:
+                raise DomainError(f"买入批次不存在或已无剩余份额: {buy_tx_id}")
+            if sh > remain + 1e-9:
+                raise DomainError(f"批次 {buy_tx_id} 卖出份额超过可用剩余 {remain:.4f}")
+            allocations.append({"buy_tx_id": buy_tx_id, "shares": q_money(sh)})
+            total_shares += sh
+        self._validate_trade_inputs(apply_date, confirm_date, price, total_shares, fee)
+        tx = Transaction(
+            id=self._next_id(data, "tx"),
+            fund_id=fund_id,
+            tx_type="sell",
+            apply_date=apply_date,
+            confirm_date=confirm_date,
+            price=float(price),
+            shares=q_money(total_shares),
+            amount=q_money(float(price) * total_shares),
+            fee=q_money(float(fee)),
+            allocations=allocations,
         ).to_dict()
         data["transactions"].append(tx)
         self._save(data)
@@ -198,30 +254,13 @@ class PortfolioService:
         return [tx for tx in transactions if tx["tx_type"] == tx_type]
 
     def get_open_buy_points(self, fund_id: int, date_field: str = "confirm_date") -> list[dict[str, Any]]:
-        buys = self.get_transactions(fund_id, date_field=date_field)
-        lots: list[dict[str, Any]] = []
-        for tx in buys:
-            if tx["tx_type"] == "buy":
-                lots.append(
-                    {
-                        "buy_id": tx["id"],
-                        "date": tx[date_field],
-                        "price": tx["price"],
-                        "original_shares": tx["shares"],
-                        "remaining_shares": tx["shares"],
-                    }
-                )
-            else:
-                remaining_sell = tx["shares"]
-                for lot in lots:
-                    if remaining_sell <= 0:
-                        break
-                    if lot["remaining_shares"] <= 0:
-                        continue
-                    consumed = min(lot["remaining_shares"], remaining_sell)
-                    lot["remaining_shares"] -= consumed
-                    remaining_sell -= consumed
-        return [lot for lot in lots if lot["remaining_shares"] > 1e-9]
+        data = self._load()
+        self._ensure_fund(data, fund_id)
+        lots = self._build_lot_states(data, fund_id, date_field=date_field)
+        return [lot for lot in lots if float(lot["remaining_shares"]) > 1e-9]
+
+    def get_sellable_buy_lots(self, fund_id: int, date_field: str = "confirm_date") -> list[dict[str, Any]]:
+        return self.get_open_buy_points(fund_id, date_field=date_field)
 
     @staticmethod
     def _holding_days_for_open_lots(
@@ -265,6 +304,63 @@ class PortfolioService:
             if balance < -eps:
                 raise DomainError("删除后交易序列非法：历史卖出累计超过买入累计")
 
+    def _build_fifo_allocations(self, data: dict[str, Any], fund_id: int, sell_shares: float) -> list[dict[str, float]]:
+        lots = self._build_lot_states(data, fund_id, date_field="confirm_date")
+        remaining = float(sell_shares)
+        allocations: list[dict[str, float]] = []
+        for lot in lots:
+            rem = float(lot["remaining_shares"])
+            if rem <= 1e-9:
+                continue
+            if remaining <= 1e-9:
+                break
+            consumed = min(rem, remaining)
+            allocations.append({"buy_tx_id": int(lot["buy_id"]), "shares": q_money(consumed)})
+            remaining -= consumed
+        if remaining > 1e-9:
+            raise DomainError("卖出份额超过当前持仓")
+        return allocations
+
+    def _build_lot_states(self, data: dict[str, Any], fund_id: int, date_field: str = "confirm_date") -> list[dict[str, Any]]:
+        txs = [tx for tx in data["transactions"] if tx["fund_id"] == fund_id]
+        txs.sort(key=lambda x: (x[date_field], int(x["id"])))
+        lots: list[dict[str, Any]] = []
+        for tx in txs:
+            if tx["tx_type"] == "buy":
+                lots.append(
+                    {
+                        "buy_id": int(tx["id"]),
+                        "date": tx[date_field],
+                        "price": float(tx["price"]),
+                        "original_shares": float(tx["shares"]),
+                        "remaining_shares": float(tx["shares"]),
+                    }
+                )
+                continue
+            allocations = tx.get("allocations") or []
+            if allocations:
+                lot_map = {int(l["buy_id"]): l for l in lots}
+                for a in allocations:
+                    try:
+                        buy_tx_id = int(a["buy_tx_id"])
+                        sh = float(a["shares"])
+                    except (KeyError, TypeError, ValueError):
+                        continue
+                    lot = lot_map.get(buy_tx_id)
+                    if lot is not None:
+                        lot["remaining_shares"] -= sh
+            else:
+                remaining_sell = float(tx["shares"])
+                for lot in lots:
+                    if remaining_sell <= 1e-9:
+                        break
+                    if float(lot["remaining_shares"]) <= 1e-9:
+                        continue
+                    consumed = min(float(lot["remaining_shares"]), remaining_sell)
+                    lot["remaining_shares"] -= consumed
+                    remaining_sell -= consumed
+        return lots
+
     def get_remaining_shares(self, fund_id: int) -> float:
         data = self._load()
         self._ensure_fund(data, fund_id)
@@ -286,7 +382,7 @@ class PortfolioService:
         txs = self.get_transactions(fund_id, date_field=date_field)
         buf = StringIO()
         w = csv.writer(buf)
-        w.writerow(["tx_type", "apply_date", "confirm_date", "price", "shares", "amount", "fee"])
+        w.writerow(["tx_type", "apply_date", "confirm_date", "price", "shares", "amount", "fee", "allocations_json"])
         for tx in txs:
             w.writerow(
                 [
@@ -297,6 +393,7 @@ class PortfolioService:
                     tx["shares"],
                     tx["amount"],
                     tx.get("fee", 0.0),
+                    json.dumps(tx.get("allocations", []), ensure_ascii=False),
                 ]
             )
         return buf.getvalue()
@@ -436,10 +533,14 @@ class PortfolioService:
             if not isinstance(row, dict):
                 raise DomainError("transactions 中每项必须是对象")
             tx_type, apply_date, confirm_date, price, shares, fee = self._parse_import_tx_row(row)
+            allocs = self._parse_import_allocations(row.get("allocations"))
             if tx_type == "buy":
                 self.add_buy(fund_id, apply_date, confirm_date, price, shares, fee)
             else:
-                self.add_sell(fund_id, apply_date, confirm_date, price, shares, fee)
+                if allocs:
+                    self.add_sell_by_lots(fund_id, apply_date, confirm_date, price, allocs, fee)
+                else:
+                    self.add_sell(fund_id, apply_date, confirm_date, price, shares, fee)
             count += 1
         return count
 
@@ -475,6 +576,7 @@ class PortfolioService:
             if not any(str(row.get(c, "") or "").strip() for c in required):
                 continue
             tx_type, apply_date, confirm_date, price, shares, fee = self._parse_import_tx_row(row)
+            allocs = self._parse_import_allocations_csv_cell(row.get("allocations_json"))
             exp_amt = q_money(float(price) * float(shares))
             amt_raw = row.get("amount")
             if amt_raw is not None and str(amt_raw).strip() != "":
@@ -487,11 +589,43 @@ class PortfolioService:
             if tx_type == "buy":
                 self.add_buy(fund_id, apply_date, confirm_date, price, shares, fee)
             else:
-                self.add_sell(fund_id, apply_date, confirm_date, price, shares, fee)
+                if allocs:
+                    self.add_sell_by_lots(fund_id, apply_date, confirm_date, price, allocs, fee)
+                else:
+                    self.add_sell(fund_id, apply_date, confirm_date, price, shares, fee)
             count += 1
         if count == 0:
             raise DomainError("未导入任何有效交易行")
         return count
+
+    @staticmethod
+    def _parse_import_allocations(raw: Any) -> list[dict[str, float]]:
+        if raw is None:
+            return []
+        if not isinstance(raw, list):
+            raise DomainError("allocations 必须是数组")
+        out: list[dict[str, float]] = []
+        for it in raw:
+            if not isinstance(it, dict):
+                raise DomainError("allocations 中每项必须是对象")
+            try:
+                buy_tx_id = int(it["buy_tx_id"])
+                shares = float(it["shares"])
+            except (KeyError, TypeError, ValueError) as e:
+                raise DomainError(f"allocations 字段错误: {it}") from e
+            if shares <= 0:
+                raise DomainError("allocations 中 shares 必须大于0")
+            out.append({"buy_tx_id": buy_tx_id, "shares": shares})
+        return out
+
+    def _parse_import_allocations_csv_cell(self, raw: Any) -> list[dict[str, float]]:
+        if raw is None or str(raw).strip() == "":
+            return []
+        try:
+            payload = json.loads(str(raw))
+        except json.JSONDecodeError as e:
+            raise DomainError(f"allocations_json 解析失败: {e}") from e
+        return self._parse_import_allocations(payload)
 
     def get_portfolio_overview(self) -> dict[str, float]:
         rows = self.get_all_position_summaries()

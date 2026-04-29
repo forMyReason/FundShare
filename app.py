@@ -139,6 +139,50 @@ def _sample_label_text(series: pd.Series, max_labels: int = 8) -> list[str | Non
     return out
 
 
+def _buy_lot_status_from_transactions(txs: list[dict]) -> list[dict]:
+    buy_rows = [
+        {
+            "buy_tx_id": int(tx["id"]),
+            "date": tx["confirm_date"],
+            "price": float(tx["price"]),
+            "original_shares": float(tx["shares"]),
+            "sold_shares": 0.0,
+        }
+        for tx in txs
+        if tx["tx_type"] == "buy"
+    ]
+    buy_map = {int(r["buy_tx_id"]): r for r in buy_rows}
+    for tx in txs:
+        if tx["tx_type"] != "sell":
+            continue
+        allocs = tx.get("allocations") or []
+        if allocs:
+            for a in allocs:
+                try:
+                    bid = int(a["buy_tx_id"])
+                    sh = float(a["shares"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                if bid in buy_map:
+                    buy_map[bid]["sold_shares"] += sh
+        else:
+            # legacy sell without allocations: fallback FIFO simulation
+            remaining = float(tx["shares"])
+            for r in buy_rows:
+                can = float(r["original_shares"]) - float(r["sold_shares"])
+                if can <= 1e-9:
+                    continue
+                if remaining <= 1e-9:
+                    break
+                used = min(can, remaining)
+                r["sold_shares"] += used
+                remaining -= used
+    for r in buy_rows:
+        r["remaining_shares"] = max(0.0, float(r["original_shares"]) - float(r["sold_shares"]))
+    buy_rows.sort(key=lambda x: (x["date"], x["buy_tx_id"]))
+    return buy_rows
+
+
 def render_fund_management() -> None:
     st.subheader("当前持有基金总览")
     funds = service.list_funds()
@@ -217,6 +261,28 @@ def render_fund_management() -> None:
             k4.metric("持有收益率", f"{hold_ratio:.2f}%")
             k5.metric("累计盈亏", f"{cum_pnl:.4f}")
 
+            buy_lots = _buy_lot_status_from_transactions(txs)
+            if buy_lots:
+                lot_df = pd.DataFrame(buy_lots)
+                lot_df["remaining_cost"] = lot_df["remaining_shares"].astype(float) * lot_df["price"].astype(float)
+                st.markdown("**买入批次分布（lot）**")
+                st.dataframe(
+                    lot_df.rename(
+                        columns={
+                            "buy_tx_id": "买入ID",
+                            "date": "买入日",
+                            "price": "买入价",
+                            "original_shares": "原始份额",
+                            "sold_shares": "已卖份额",
+                            "remaining_shares": "剩余份额",
+                            "remaining_cost": "剩余成本",
+                        }
+                    )[["买入ID", "买入日", "买入价", "原始份额", "已卖份额", "剩余份额", "剩余成本"]],
+                    use_container_width=True,
+                    hide_index=True,
+                    height=min(260, 52 + len(lot_df) * 34),
+                )
+
             nav_points = service.get_nav_points(f["id"])
             data_source = "本地记录"
             try:
@@ -282,44 +348,30 @@ def render_fund_management() -> None:
                             )
                     except Exception:  # noqa: BLE001
                         st.caption(f"{benchmark_pick} 对标获取失败，已忽略。")
-                buy_tx = [tx for tx in txs if tx["tx_type"] == "buy"]
-                sell_tx = [tx for tx in txs if tx["tx_type"] == "sell"]
-                if show_trade_markers and buy_tx:
-                    buy_df = pd.DataFrame(buy_tx)
+                buy_lots = _buy_lot_status_from_transactions(txs)
+                if show_trade_markers and buy_lots:
+                    buy_df = pd.DataFrame(buy_lots)
                     buy_text = (
-                        _sample_label_text(buy_df["shares"].apply(lambda v: f"买入 {float(v):.2f}份"))
+                        _sample_label_text(buy_df["original_shares"].apply(lambda v: f"买入 {float(v):.2f}份"))
                         if show_trade_labels
                         else None
                     )
                     fig_nav.add_trace(
                         go.Scatter(
-                            x=buy_df["confirm_date"],
+                            x=buy_df["date"],
                             y=(buy_df["price"].astype(float) / float(nav_df["nav"].iloc[0]) - 1.0) * 100.0,
                             mode="markers",
                             name="买入点",
                             marker={"size": 8, "color": "#e74c3c", "symbol": "circle"},
                             text=buy_text,
                             textposition="top center",
-                            hovertemplate="买入日=%{x}<br>点位=%{y:.2f}%<extra></extra>",
-                        )
-                    )
-                if show_trade_markers and sell_tx:
-                    sell_df = pd.DataFrame(sell_tx)
-                    sell_text = (
-                        _sample_label_text(sell_df["shares"].apply(lambda v: f"卖出 {float(v):.2f}份"))
-                        if show_trade_labels
-                        else None
-                    )
-                    fig_nav.add_trace(
-                        go.Scatter(
-                            x=sell_df["confirm_date"],
-                            y=(sell_df["price"].astype(float) / float(nav_df["nav"].iloc[0]) - 1.0) * 100.0,
-                            mode="markers",
-                            name="卖出点",
-                            marker={"size": 8, "color": "#2ecc71", "symbol": "diamond"},
-                            text=sell_text,
-                            textposition="bottom center",
-                            hovertemplate="卖出日=%{x}<br>点位=%{y:.2f}%<extra></extra>",
+                            customdata=buy_df[["original_shares", "sold_shares", "remaining_shares"]],
+                            hovertemplate=(
+                                "买入日=%{x}<br>点位=%{y:.2f}%"
+                                "<br>原始份额=%{customdata[0]:.4f}"
+                                "<br>已卖份额=%{customdata[1]:.4f}"
+                                "<br>剩余份额=%{customdata[2]:.4f}<extra></extra>"
+                            ),
                         )
                     )
                 fig_nav.update_layout(
@@ -358,6 +410,7 @@ def render_fund_management() -> None:
                 tx_df = pd.DataFrame(txs).sort_values("confirm_date", ascending=False)
                 if "fee" not in tx_df.columns:
                     tx_df["fee"] = 0.0
+                st.markdown("**最近交易摘要（最近8笔）**")
                 st.dataframe(
                     tx_df.rename(
                         columns={
@@ -369,10 +422,10 @@ def render_fund_management() -> None:
                             "amount": "金额",
                             "fee": "手续费",
                         }
-                    )[["类型", "申请日", "确认日", "价格", "份额", "金额", "手续费"]],
+                    )[["类型", "申请日", "确认日", "价格", "份额", "金额", "手续费"]].head(8),
                     use_container_width=True,
                     hide_index=True,
-                    height=min(300, 52 + len(tx_df) * 36),
+                    height=min(300, 52 + min(len(tx_df), 8) * 36),
                 )
 
 
@@ -577,7 +630,7 @@ def render_trades_and_chart() -> None:
     with t2:
         with st.container(border=True):
             with st.form("sell_form", clear_on_submit=True):
-                st.markdown("**卖出（FIFO）**")
+                st.markdown("**卖出**")
                 st.caption(f"当前可卖出份额：{remaining_shares:.4f}")
                 apply_d = st.date_input("卖出申请日", value=date.today(), key="sell_apply_date")
                 confirm_d = st.date_input("卖出确认日", value=date.today(), key="sell_confirm_date")
@@ -596,28 +649,57 @@ def render_trades_and_chart() -> None:
                     price = st.number_input(
                         "卖出确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="sell_price"
                     )
-                sell_preset = st.selectbox(
-                    "卖出比例快捷",
-                    ["自定义", "25%", "50%", "75%", "100%"],
-                    key=f"sell_preset_{fund_id}",
-                )
-                if sell_preset == "自定义":
-                    default_sell = min(100.0, remaining_shares) if remaining_shares > 0 else 0.0001
-                else:
-                    pct = float(sell_preset.rstrip("%")) / 100.0
-                    default_sell = max(
-                        0.0001,
-                        min(float(remaining_shares), float(remaining_shares) * pct) if remaining_shares > 0 else 0.0001,
+                sell_mode = st.radio("卖出方式", ["FIFO 自动", "指定买入批次"], horizontal=True, key=f"sell_mode_{fund_id}")
+                picks: list[dict] = []
+                if sell_mode == "FIFO 自动":
+                    sell_preset = st.selectbox(
+                        "卖出比例快捷",
+                        ["自定义", "25%", "50%", "75%", "100%"],
+                        key=f"sell_preset_{fund_id}",
                     )
-                shares = st.number_input(
-                    "卖出份额",
-                    min_value=0.0001,
-                    max_value=max(0.0001, remaining_shares),
-                    value=default_sell,
-                    step=1.0,
-                    format="%.4f",
-                    key=f"sell_shares_{fund_id}_{sell_preset}",
-                )
+                    if sell_preset == "自定义":
+                        default_sell = min(100.0, remaining_shares) if remaining_shares > 0 else 0.0001
+                    else:
+                        pct = float(sell_preset.rstrip("%")) / 100.0
+                        default_sell = max(
+                            0.0001,
+                            min(float(remaining_shares), float(remaining_shares) * pct) if remaining_shares > 0 else 0.0001,
+                        )
+                    shares = st.number_input(
+                        "卖出份额",
+                        min_value=0.0001,
+                        max_value=max(0.0001, remaining_shares),
+                        value=default_sell,
+                        step=1.0,
+                        format="%.4f",
+                        key=f"sell_shares_{fund_id}_{sell_preset}",
+                    )
+                else:
+                    lots = service.get_sellable_buy_lots(fund_id, date_field="confirm_date")
+                    lot_map = {
+                        f"买入#{int(l['buy_id'])} {l['date']} 价:{float(l['price']):.4f} 剩:{float(l['remaining_shares']):.4f}": l
+                        for l in lots
+                        if float(l["remaining_shares"]) > 1e-9
+                    }
+                    chosen = st.multiselect("选择要抵扣的买入批次", options=list(lot_map.keys()), key=f"sell_lot_pick_{fund_id}")
+                    total = 0.0
+                    for label in chosen:
+                        lot = lot_map[label]
+                        max_sh = float(lot["remaining_shares"])
+                        sh = st.number_input(
+                            f"批次#{int(lot['buy_id'])} 卖出份额",
+                            min_value=0.0,
+                            max_value=max_sh,
+                            value=max_sh,
+                            step=1.0,
+                            format="%.4f",
+                            key=f"sell_lot_sh_{fund_id}_{int(lot['buy_id'])}",
+                        )
+                        if sh > 0:
+                            picks.append({"buy_tx_id": int(lot["buy_id"]), "shares": float(sh)})
+                            total += float(sh)
+                    shares = total
+                    st.caption(f"本次卖出总份额：{shares:.4f}")
                 sell_fee = st.number_input(
                     "手续费（可选）", min_value=0.0, value=0.0, step=0.01, format="%.4f", key=f"sell_fee_{fund_id}"
                 )
@@ -635,9 +717,14 @@ def render_trades_and_chart() -> None:
                         st.error("请先勾选确认后再提交卖出。")
                     else:
                         try:
-                            service.add_sell(
-                                fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, shares, sell_fee
-                            )
+                            if sell_mode == "FIFO 自动":
+                                service.add_sell(
+                                    fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, shares, sell_fee
+                                )
+                            else:
+                                service.add_sell_by_lots(
+                                    fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, picks, sell_fee
+                                )
                         except ValueError as e:
                             st.error(str(e))
                         else:

@@ -71,6 +71,23 @@ class JsonStorage:
             tx.setdefault("confirm_date", legacy_date)
             tx.pop("date", None)
             tx.setdefault("fee", 0.0)
+            tx.setdefault("allocations", [])
+            if not isinstance(tx["allocations"], list):
+                tx["allocations"] = []
+            cleaned: list[dict[str, Any]] = []
+            for a in tx["allocations"]:
+                if not isinstance(a, dict):
+                    continue
+                try:
+                    cleaned.append(
+                        {
+                            "buy_tx_id": int(a["buy_tx_id"]),
+                            "shares": float(a["shares"]),
+                        }
+                    )
+                except (KeyError, TypeError, ValueError):
+                    continue
+            tx["allocations"] = cleaned
         return data
 
     @staticmethod

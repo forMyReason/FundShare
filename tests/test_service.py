@@ -168,6 +168,7 @@ def test_storage_migrates_legacy_transaction_date(tmp_path: Path) -> None:
     assert tx["apply_date"] == "2026-01-01"
     assert tx["confirm_date"] == "2026-01-01"
     assert "date" not in tx
+    assert tx["allocations"] == []
     assert tx["fee"] == 0.0
 
 
@@ -229,7 +230,7 @@ def test_export_transactions_csv_contains_expected_columns_and_rows(service: Por
     service.add_buy(fund["id"], "2026-06-02", "2026-06-03", 1.11, 10)
     service.add_sell(fund["id"], "2026-06-04", "2026-06-05", 1.12, 3)
     csv_text = service.export_transactions_csv(fund["id"])
-    assert "fee" in csv_text.splitlines()[0]
+    assert "allocations_json" in csv_text.splitlines()[0]
     assert "buy,2026-06-02,2026-06-03,1.11,10.0,11.1,0.0" in csv_text.replace("\r\n", "\n")
     assert "sell,2026-06-04,2026-06-05,1.12,3.0,3.36,0.0" in csv_text.replace("\r\n", "\n")
 
@@ -551,6 +552,107 @@ def test_import_transactions_csv_missing_header(service: PortfolioService) -> No
     body = "tx_type,apply_date,confirm_date,price\nbuy,2026-02-01,2026-02-02,1.0\n"
     with pytest.raises(ValueError):
         service.import_transactions_csv(body, "780005")
+
+
+def test_add_sell_by_lots_success(service: PortfolioService) -> None:
+    f = service.add_fund("780101", "指定批次卖出", 1.2, "2026-01-01")
+    b1 = service.add_buy(f["id"], "2026-01-02", "2026-01-03", 1.0, 100)
+    b2 = service.add_buy(f["id"], "2026-01-04", "2026-01-05", 1.1, 50)
+    tx = service.add_sell_by_lots(
+        f["id"],
+        "2026-01-06",
+        "2026-01-07",
+        1.2,
+        picks=[{"buy_tx_id": b2["id"], "shares": 20}, {"buy_tx_id": b1["id"], "shares": 10}],
+        fee=0.3,
+    )
+    assert tx["shares"] == 30.0
+    assert len(tx["allocations"]) == 2
+    lots = service.get_open_buy_points(f["id"])
+    lot_by_id = {int(r["buy_id"]): r for r in lots}
+    assert lot_by_id[int(b1["id"])]["remaining_shares"] == 90.0
+    assert lot_by_id[int(b2["id"])]["remaining_shares"] == 30.0
+
+
+def test_add_sell_fifo_writes_allocations(service: PortfolioService) -> None:
+    f = service.add_fund("780104", "fifo写分摊", 1.0, "2026-01-01")
+    b1 = service.add_buy(f["id"], "2026-01-02", "2026-01-03", 1.0, 10)
+    b2 = service.add_buy(f["id"], "2026-01-04", "2026-01-05", 1.0, 10)
+    s = service.add_sell(f["id"], "2026-01-06", "2026-01-07", 1.1, 12)
+    assert len(s["allocations"]) == 2
+    assert s["allocations"][0]["buy_tx_id"] == b1["id"]
+    assert s["allocations"][1]["buy_tx_id"] == b2["id"]
+
+
+def test_add_sell_by_lots_rejects_over_sell_on_single_lot(service: PortfolioService) -> None:
+    f = service.add_fund("780102", "指定批次校验", 1.0, "2026-01-01")
+    b = service.add_buy(f["id"], "2026-01-02", "2026-01-03", 1.0, 10)
+    with pytest.raises(ValueError):
+        service.add_sell_by_lots(
+            f["id"],
+            "2026-01-04",
+            "2026-01-05",
+            1.1,
+            picks=[{"buy_tx_id": b["id"], "shares": 11}],
+        )
+
+
+def test_get_open_buy_points_uses_sell_allocations(service: PortfolioService) -> None:
+    f = service.add_fund("780103", "分摊回放", 1.0, "2026-01-01")
+    b1 = service.add_buy(f["id"], "2026-01-02", "2026-01-03", 1.0, 30)
+    b2 = service.add_buy(f["id"], "2026-01-04", "2026-01-05", 1.0, 30)
+    service.add_sell_by_lots(
+        f["id"],
+        "2026-01-06",
+        "2026-01-07",
+        1.0,
+        picks=[{"buy_tx_id": b2["id"], "shares": 25}],
+    )
+    lots = service.get_open_buy_points(f["id"])
+    by_id = {int(r["buy_id"]): r for r in lots}
+    assert by_id[int(b1["id"])]["remaining_shares"] == 30.0
+    assert by_id[int(b2["id"])]["remaining_shares"] == 5.0
+
+
+def test_import_transactions_json_with_allocations(service: PortfolioService) -> None:
+    f = service.add_fund("780105", "json分摊", 1.0, "2026-01-01")
+    payload = json.dumps(
+        {
+            "fund_code": "780105",
+            "transactions": [
+                {
+                    "tx_type": "buy",
+                    "apply_date": "2026-01-02",
+                    "confirm_date": "2026-01-03",
+                    "price": 1.0,
+                    "shares": 20,
+                },
+                {
+                    "tx_type": "sell",
+                    "apply_date": "2026-01-04",
+                    "confirm_date": "2026-01-05",
+                    "price": 1.1,
+                    "shares": 5,
+                    "allocations": [{"buy_tx_id": 1, "shares": 5}],
+                },
+            ],
+        }
+    )
+    assert service.import_transactions_json(payload) == 2
+    txs = service.get_transactions(f["id"])
+    assert txs[1]["allocations"][0]["shares"] == 5
+
+
+def test_import_transactions_csv_with_allocations_json(service: PortfolioService) -> None:
+    f = service.add_fund("780106", "csv分摊", 1.0, "2026-01-01")
+    body = (
+        "tx_type,apply_date,confirm_date,price,shares,amount,fee,allocations_json\n"
+        "buy,2026-01-02,2026-01-03,1.0,20,20,0,\n"
+        "sell,2026-01-04,2026-01-05,1.1,6,6.6,0,\"[{\"\"buy_tx_id\"\":1,\"\"shares\"\":6}]\"\n"
+    )
+    assert service.import_transactions_csv(body, "780106") == 2
+    txs = service.get_transactions(f["id"])
+    assert txs[1]["allocations"][0]["buy_tx_id"] == 1
 
 
 def test_fifo_many_small_sells_remain_consistent(service: PortfolioService) -> None:
