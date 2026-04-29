@@ -31,7 +31,7 @@ with st.sidebar:
     st.caption("数据目录：" + (_dd if _dd else "默认 `data/`，可用环境变量 `DATA_DIR`"))
     st.divider()
 st.title("个人基金交易记录器")
-st.caption("记录基金买卖，按 FIFO 抵扣份额；净值曲线可叠加买入点与多基对比。")
+st.caption("买入以确认日为准；卖出默认按批次指定抵扣，亦可选 FIFO；净值曲线可叠加买入点与多基对比。")
 
 service = PortfolioService()
 
@@ -581,7 +581,6 @@ def render_trades_and_chart() -> None:
         with st.container(border=True):
             with st.form("buy_form", clear_on_submit=True):
                 st.markdown("**买入**")
-                apply_d = st.date_input("买入申请日", value=date.today(), key="buy_apply_date")
                 confirm_d = st.date_input("买入确认日", value=date.today(), key="buy_confirm_date")
                 auto_price = st.checkbox("使用确认日自动净值", value=True, key="buy_auto_price")
                 buy_auto_nav = _fetch_nav_by_date(selected_fund["code"], confirm_d.isoformat())
@@ -620,7 +619,8 @@ def render_trades_and_chart() -> None:
                 submitted = st.form_submit_button("记录买入", disabled=_is_locked("buy_tx"))
                 if submitted:
                     try:
-                        service.add_buy(fund_id, apply_d.isoformat(), confirm_d.isoformat(), price, shares, buy_fee)
+                        cd = confirm_d.isoformat()
+                        service.add_buy(fund_id, cd, cd, price, shares, buy_fee)
                     except ValueError as e:
                         st.error(str(e))
                     else:
@@ -649,7 +649,13 @@ def render_trades_and_chart() -> None:
                     price = st.number_input(
                         "卖出确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="sell_price"
                     )
-                sell_mode = st.radio("卖出方式", ["FIFO 自动", "指定买入批次"], horizontal=True, key=f"sell_mode_{fund_id}")
+                sell_mode = st.radio(
+                    "卖出方式",
+                    ["FIFO 自动", "指定买入批次"],
+                    horizontal=True,
+                    index=1,
+                    key=f"sell_mode_{fund_id}",
+                )
                 picks: list[dict] = []
                 if sell_mode == "FIFO 自动":
                     sell_preset = st.selectbox(
