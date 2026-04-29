@@ -908,7 +908,14 @@ def render_trades_and_chart() -> None:
                         st.error(str(e))
 
     nav_points = service.get_nav_points(fund_id)
+    try:
+        remote_nav_points = _fetch_nav_trend_cached(selected_fund["code"])
+    except Exception:  # noqa: BLE001
+        remote_nav_points = []
+    if remote_nav_points:
+        nav_points = remote_nav_points
     if not nav_points:
+        st.info("暂无净值数据，无法绘制曲线。")
         return
     st.markdown("##### 净值曲线")
     chart_range = st.radio(
@@ -925,8 +932,18 @@ def render_trades_and_chart() -> None:
     if nav_df.empty:
         st.info("当前时间范围内没有净值数据，请选择「全部」或更长区间。")
         return
-    open_buys = service.get_open_buy_points(fund_id, date_field=date_field)
-    open_buys = service.filter_records_by_date_range(open_buys, "date", win_start, win_end)
+    tx_all = service.get_transactions(fund_id, date_field="confirm_date")
+    buy_lots_all = _buy_lot_status_from_transactions(tx_all)
+    buy_points = [
+        {
+            "date": r["date"],
+            "price": float(r["price"]),
+            "original_shares": float(r["original_shares"]),
+            "remaining_shares": float(r["remaining_shares"]),
+        }
+        for r in buy_lots_all
+    ]
+    buy_points = service.filter_records_by_date_range(buy_points, "date", win_start, win_end)
 
     gaps = service.nav_point_calendar_gaps(nav_filtered, min_gap_days=14)
     with st.expander("净值曲线说明与数据间隔", expanded=False):
@@ -970,17 +987,20 @@ def render_trades_and_chart() -> None:
             ),
             secondary_y=True,
         )
-        if open_buys:
-            open_df = pd.DataFrame(open_buys)
+        if buy_points:
+            open_df = pd.DataFrame(buy_points)
             fig.add_trace(
                 go.Scatter(
                     x=open_df["date"],
                     y=open_df["price"],
                     mode="markers",
-                    name="仍持有买入点",
+                    name="买入点",
                     marker={"color": "red", "size": 10, "symbol": "circle"},
-                    text=open_df["remaining_shares"].apply(lambda v: f"剩余份额: {v:.2f}"),
-                    hovertemplate="日期=%{x}<br>买入净值=%{y}<br>%{text}<extra></extra>",
+                    text=open_df.apply(
+                        lambda row: f"买入份额: {float(row['original_shares']):.2f} | 剩余份额: {float(row['remaining_shares']):.2f}",
+                        axis=1,
+                    ),
+                    hovertemplate="日期=%{x}<br>买入净值=%{y:.4f}<br>%{text}<extra></extra>",
                 ),
                 secondary_y=False,
             )
@@ -1004,19 +1024,24 @@ def render_trades_and_chart() -> None:
                 line={"width": 2},
             )
         )
-        if open_buys:
-            open_df = pd.DataFrame(open_buys)
+        if buy_points:
+            open_df = pd.DataFrame(buy_points)
             fig.add_trace(
                 go.Scatter(
                     x=open_df["date"],
                     y=open_df["price"],
                     mode="markers",
-                    name="仍持有买入点",
+                    name="买入点",
                     marker={"color": "red", "size": 10, "symbol": "circle"},
-                    text=open_df["remaining_shares"].apply(lambda v: f"剩余份额: {v:.2f}"),
-                    hovertemplate="日期=%{x}<br>买入净值=%{y}<br>%{text}<extra></extra>",
+                    text=open_df.apply(
+                        lambda row: f"买入份额: {float(row['original_shares']):.2f} | 剩余份额: {float(row['remaining_shares']):.2f}",
+                        axis=1,
+                    ),
+                    hovertemplate="日期=%{x}<br>买入净值=%{y:.4f}<br>%{text}<extra></extra>",
                 )
             )
+        else:
+            st.caption("当前区间内无买入点。")
         fig.update_layout(
             title=f"净值曲线与当前持仓买入点（{analysis_basis}）",
             xaxis_title="日期",
