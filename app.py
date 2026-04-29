@@ -1014,13 +1014,14 @@ def render_trades_and_chart() -> None:
         )
         if buy_points:
             open_df = pd.DataFrame(buy_points)
+            buy_symbols = open_df["remaining_shares"].apply(lambda v: "circle-open" if float(v) <= 1e-9 else "circle").tolist()
             fig.add_trace(
                 go.Scatter(
                     x=open_df["date"],
                     y=open_df["price"],
                     mode="markers",
                     name="买入点",
-                    marker={"color": "#f25278", "size": 8, "symbol": "circle"},
+                    marker={"color": "#f25278", "size": 8, "symbol": buy_symbols},
                     text=open_df.apply(
                         lambda row: f"当日买入笔数: {int(row['buy_count'])} | 买入份额: {float(row['original_shares']):.2f} | 剩余份额: {float(row['remaining_shares']):.2f}",
                         axis=1,
@@ -1054,13 +1055,14 @@ def render_trades_and_chart() -> None:
         )
         if buy_points:
             open_df = pd.DataFrame(buy_points)
+            buy_symbols = open_df["remaining_shares"].apply(lambda v: "circle-open" if float(v) <= 1e-9 else "circle").tolist()
             fig.add_trace(
                 go.Scatter(
                     x=open_df["date"],
                     y=open_df["price"],
                     mode="markers",
                     name="买入点",
-                    marker={"color": "#f25278", "size": 8, "symbol": "circle"},
+                    marker={"color": "#f25278", "size": 8, "symbol": buy_symbols},
                     text=open_df.apply(
                         lambda row: f"当日买入笔数: {int(row['buy_count'])} | 买入份额: {float(row['original_shares']):.2f} | 剩余份额: {float(row['remaining_shares']):.2f}",
                         axis=1,
