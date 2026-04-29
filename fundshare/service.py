@@ -179,6 +179,25 @@ class PortfolioService:
             )
         return output.getvalue()
 
+    def get_position_summary(self, fund_id: int) -> dict[str, float]:
+        data = self._load()
+        self._ensure_fund(data, fund_id)
+        fund = next(f for f in data["funds"] if f["id"] == fund_id)
+        open_lots = self.get_open_buy_points(fund_id, date_field="confirm_date")
+        holding_shares = sum(lot["remaining_shares"] for lot in open_lots)
+        holding_cost = sum(lot["remaining_shares"] * lot["price"] for lot in open_lots)
+        market_value = holding_shares * float(fund["current_nav"])
+        floating_pnl = market_value - holding_cost
+        avg_cost = (holding_cost / holding_shares) if holding_shares > 0 else 0.0
+        return {
+            "holding_shares": round(holding_shares, 4),
+            "holding_cost": round(holding_cost, 4),
+            "avg_cost": round(avg_cost, 4),
+            "market_value": round(market_value, 4),
+            "floating_pnl": round(floating_pnl, 4),
+            "current_nav": round(float(fund["current_nav"]), 4),
+        }
+
     @staticmethod
     def _validate_trade_inputs(apply_date: str, confirm_date: str, price: float, shares: float) -> None:
         if apply_date > confirm_date:

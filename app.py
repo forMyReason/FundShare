@@ -117,6 +117,13 @@ def render_trades_and_chart() -> None:
     selected_label = st.selectbox("选择基金", list(options.keys()))
     fund_id = options[selected_label]
     selected_fund = next(f for f in funds if f["id"] == fund_id)
+    summary = service.get_position_summary(fund_id)
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric("持仓份额", f"{summary['holding_shares']:.4f}")
+    c2.metric("持仓成本", f"{summary['holding_cost']:.4f}")
+    c3.metric("当前净值", f"{summary['current_nav']:.4f}")
+    c4.metric("估值", f"{summary['market_value']:.4f}")
+    c5.metric("浮动盈亏", f"{summary['floating_pnl']:.4f}")
 
     t1, t2 = st.columns(2)
     with t1:

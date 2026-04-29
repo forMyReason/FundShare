@@ -199,6 +199,19 @@ def test_export_transactions_csv_contains_expected_columns_and_rows(service: Por
     assert "sell,2026-06-04,2026-06-05,1.12,3.0,3.36" in csv_text
 
 
+def test_position_summary_calculation(service: PortfolioService) -> None:
+    fund = service.add_fund("700001", "持仓汇总测试", 1.2, "2026-07-01")
+    service.add_buy(fund["id"], "2026-07-02", "2026-07-03", 1.0, 100)
+    service.add_buy(fund["id"], "2026-07-04", "2026-07-05", 1.1, 100)
+    service.add_sell(fund["id"], "2026-07-06", "2026-07-07", 1.15, 80)
+    summary = service.get_position_summary(fund["id"])
+    assert summary["holding_shares"] == 120.0
+    assert summary["holding_cost"] == 130.0
+    assert summary["market_value"] == 144.0
+    assert summary["floating_pnl"] == 14.0
+    assert summary["avg_cost"] == 1.0833
+
+
 def test_auto_fetch_fund_info_with_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     sample_js = """
     var fS_name = "示例基金";
