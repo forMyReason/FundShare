@@ -20,6 +20,21 @@ def _format_fund_label(fund: dict) -> str:
     return f"{fund['code']} - {fund['name']} (NAV: {fund['current_nav']})"
 
 
+def _auto_fill_new_fund() -> None:
+    code = st.session_state.get("new_fund_code", "").strip()
+    nav_date = st.session_state.get("new_fund_date", date.today())
+    if not code:
+        return
+    try:
+        auto_name, auto_nav = service.auto_fetch_fund_info(code, nav_date.isoformat())
+    except Exception as e:  # noqa: BLE001
+        st.session_state["new_fund_fetch_error"] = f"自动获取失败：{e}"
+        return
+    st.session_state["new_fund_name"] = auto_name
+    st.session_state["new_fund_nav"] = float(auto_nav)
+    st.session_state["new_fund_fetch_error"] = ""
+
+
 def render_fund_management() -> None:
     st.subheader("1) 基金基础信息管理")
     if "new_fund_code" not in st.session_state:
@@ -33,26 +48,24 @@ def render_fund_management() -> None:
 
     c1, c2, c3, c4, c5 = st.columns([1.2, 1.5, 1.0, 1.1, 1.0])
     st.session_state["new_fund_code"] = c1.text_input(
-        "基金代码", value=st.session_state["new_fund_code"], placeholder="如 161725"
+        "基金代码",
+        value=st.session_state["new_fund_code"],
+        placeholder="如 161725",
+        on_change=_auto_fill_new_fund,
     )
     st.session_state["new_fund_name"] = c2.text_input("基金名称", value=st.session_state["new_fund_name"])
     st.session_state["new_fund_nav"] = c3.number_input(
         "当前净值", min_value=0.0001, value=float(st.session_state["new_fund_nav"]), step=0.0001, format="%.4f"
     )
-    st.session_state["new_fund_date"] = c4.date_input("净值日期", value=st.session_state["new_fund_date"])
+    st.session_state["new_fund_date"] = c4.date_input(
+        "净值日期", value=st.session_state["new_fund_date"], on_change=_auto_fill_new_fund
+    )
+    if c5.button("手动重新获取", use_container_width=True):
+        _auto_fill_new_fund()
 
-    if c5.button("自动获取名称和净值", use_container_width=True):
-        try:
-            auto_name, auto_nav = service.auto_fetch_fund_info(
-                st.session_state["new_fund_code"], st.session_state["new_fund_date"].isoformat()
-            )
-        except Exception as e:  # noqa: BLE001
-            st.error(f"自动获取失败：{e}")
-        else:
-            st.session_state["new_fund_name"] = auto_name
-            st.session_state["new_fund_nav"] = float(auto_nav)
-            st.success("已自动填充基金名称和当日净值。")
-            st.rerun()
+    error_msg = st.session_state.get("new_fund_fetch_error", "")
+    if error_msg:
+        st.warning(error_msg)
 
     if st.button("新增基金"):
         code = st.session_state["new_fund_code"]
