@@ -73,6 +73,11 @@ def _fetch_nav_by_date(code: str, date_str: str) -> float | None:
     return float(nav)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _fetch_nav_trend_cached(code: str) -> list[dict]:
+    return service.api_client.fetch_nav_trend(code)
+
+
 def _fund_cumulative_pnl(summary: dict, txs: list[dict]) -> float:
     buy_amount = sum(float(tx["amount"]) for tx in txs if tx["tx_type"] == "buy")
     sell_amount = sum(float(tx["amount"]) for tx in txs if tx["tx_type"] == "sell")
@@ -185,14 +190,17 @@ def render_fund_management() -> None:
             k5.metric("累计盈亏", f"{cum_pnl:.4f}")
 
             nav_points = service.get_nav_points(f["id"])
+            data_source = "本地记录"
             try:
-                remote_nav_points = service.api_client.fetch_nav_trend(f["code"])
+                remote_nav_points = _fetch_nav_trend_cached(f["code"])
             except Exception:  # noqa: BLE001
                 remote_nav_points = []
             if remote_nav_points:
                 nav_points = remote_nav_points
+                data_source = "自动抓取"
             if nav_points:
                 nav_df = pd.DataFrame(nav_points).sort_values("date")
+                st.caption(f"走势数据来源：{data_source}")
                 period = st.radio(
                     "时间段",
                     ["近3月", "近6月", "近1年", "近3年", "近5年", "全部"],
