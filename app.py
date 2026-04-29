@@ -302,6 +302,18 @@ def render_trades_and_chart() -> None:
     open_buys = service.get_open_buy_points(fund_id, date_field=date_field)
     open_buys = service.filter_records_by_date_range(open_buys, "date", win_start, win_end)
 
+    gaps = service.nav_point_calendar_gaps(nav_filtered, min_gap_days=14)
+    with st.expander("净值曲线说明与数据间隔", expanded=False):
+        st.markdown(
+            "- **折线**连接的是已写入的净值点（含手动更新与自动抓取）。\n"
+            "- 自动填入价格时：若所选日没有净值，会使用**不晚于该日的最近净值**（与常见披露一致）。\n"
+            "- 相邻两点日历间隔过长，通常对应长假或未录入期间。"
+        )
+        if gaps:
+            st.warning(f"当前范围内有 {len(gaps)} 处相邻记录间隔超过 14 天（可按需补录净值）。")
+            for prev_d, next_d, days in gaps[:8]:
+                st.caption(f"{prev_d} → {next_d}，间隔 **{days}** 天")
+
     fig = go.Figure()
     fig.add_trace(
         go.Scatter(
@@ -370,8 +382,25 @@ with tab3:
             summary_df[["基金代码", "基金名称", "持仓份额", "持仓成本", "持仓均价", "当前净值", "估值", "浮动盈亏"]],
             use_container_width=True,
         )
+        rank_df = summary_df.copy()
+        rank_df["收益率"] = rank_df.apply(
+            lambda row: (row["浮动盈亏"] / row["持仓成本"]) if row["持仓成本"] and float(row["持仓成本"]) > 0 else 0.0,
+            axis=1,
+        )
+        rank_df = rank_df.sort_values("收益率", ascending=False)
+        st.subheader("收益率排行（按持仓成本口径）")
+        st.dataframe(
+            rank_df[["基金代码", "基金名称", "收益率", "浮动盈亏", "持仓成本"]],
+            use_container_width=True,
+        )
         bar_df = summary_df[["基金代码", "浮动盈亏"]]
         st.bar_chart(bar_df, x="基金代码", y="浮动盈亏")
+        st.download_button(
+            label="导出组合持仓CSV",
+            data=service.export_portfolio_csv(),
+            file_name="portfolio_positions.csv",
+            mime="text/csv",
+        )
     else:
         st.info("暂无基金数据。")
 

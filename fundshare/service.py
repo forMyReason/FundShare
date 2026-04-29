@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 from datetime import date, datetime, timedelta
 from io import StringIO
 import re
@@ -248,6 +249,42 @@ class PortfolioService:
             )
         return sorted(summaries, key=lambda x: x["floating_pnl"], reverse=True)
 
+    def export_portfolio_csv(self) -> str:
+        rows = self.get_all_position_summaries()
+        buf = StringIO()
+        w = csv.writer(buf)
+        w.writerow(
+            [
+                "code",
+                "name",
+                "holding_shares",
+                "holding_cost",
+                "avg_cost",
+                "current_nav",
+                "market_value",
+                "floating_pnl",
+                "pnl_ratio",
+            ]
+        )
+        for r in rows:
+            cost = float(r["holding_cost"])
+            pnl = float(r["floating_pnl"])
+            ratio = round((pnl / cost) if cost > 0 else 0.0, 6)
+            w.writerow(
+                [
+                    r["code"],
+                    r["name"],
+                    r["holding_shares"],
+                    r["holding_cost"],
+                    r["avg_cost"],
+                    r["current_nav"],
+                    r["market_value"],
+                    r["floating_pnl"],
+                    ratio,
+                ]
+            )
+        return buf.getvalue()
+
     def get_portfolio_overview(self) -> dict[str, float]:
         rows = self.get_all_position_summaries()
         total_cost = sum(float(r["holding_cost"]) for r in rows)
@@ -327,4 +364,21 @@ class PortfolioService:
             return None, None
         start_d = end_d - timedelta(days=days)
         return start_d.isoformat(), end
+
+    @staticmethod
+    def nav_point_calendar_gaps(
+        nav_points: list[dict[str, Any]],
+        *,
+        min_gap_days: int = 14,
+    ) -> list[tuple[str, str, int]]:
+        """Consecutive trading-date gaps (calendar days) between sorted nav point dates, if gap > min_gap_days."""
+        if len(nav_points) < 2:
+            return []
+        dates = sorted(datetime.strptime(p["date"], "%Y-%m-%d").date() for p in nav_points)
+        gaps: list[tuple[str, str, int]] = []
+        for i in range(1, len(dates)):
+            delta = (dates[i] - dates[i - 1]).days
+            if delta > min_gap_days:
+                gaps.append((dates[i - 1].isoformat(), dates[i].isoformat(), delta))
+        return gaps
 

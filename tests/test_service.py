@@ -294,6 +294,32 @@ def test_nav_chart_date_window_presets() -> None:
     assert start == "2026-12-01"
 
 
+def test_nav_point_calendar_gaps_detection() -> None:
+    pts = [
+        {"date": "2026-01-01", "nav": 1.0},
+        {"date": "2026-01-10", "nav": 1.05},
+    ]
+    assert PortfolioService.nav_point_calendar_gaps(pts, min_gap_days=14) == []
+    pts2 = [
+        {"date": "2026-01-01", "nav": 1.0},
+        {"date": "2026-03-01", "nav": 1.1},
+    ]
+    gaps = PortfolioService.nav_point_calendar_gaps(pts2, min_gap_days=14)
+    assert len(gaps) == 1
+    assert gaps[0][0] == "2026-01-01"
+    assert gaps[0][1] == "2026-03-01"
+    assert gaps[0][2] == 59
+
+
+def test_export_portfolio_csv(service: PortfolioService) -> None:
+    f = service.add_fund("760001", "导出组合", 1.1, "2026-08-01")
+    service.add_buy(f["id"], "2026-08-02", "2026-08-03", 1.0, 10)
+    text = service.export_portfolio_csv()
+    assert "code,name,holding_shares" in text.replace("\r\n", "\n")
+    assert "760001" in text
+    assert "1.1" in text
+
+
 def test_portfolio_overview_aggregates_totals(service: PortfolioService) -> None:
     a = service.add_fund("730001", "组合A", 1.2, "2026-07-01")
     b = service.add_fund("730002", "组合B", 0.8, "2026-07-01")
