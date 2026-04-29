@@ -127,6 +127,18 @@ def _normalize_series_to_pct(df: pd.DataFrame, value_col: str) -> pd.DataFrame:
     return out
 
 
+def _sample_label_text(series: pd.Series, max_labels: int = 8) -> list[str | None]:
+    vals = list(series)
+    n = len(vals)
+    if n <= max_labels:
+        return [str(v) for v in vals]
+    step = max(1, n // max_labels)
+    out: list[str | None] = []
+    for i, v in enumerate(vals):
+        out.append(str(v) if i % step == 0 else None)
+    return out
+
+
 def render_fund_management() -> None:
     st.subheader("当前持有基金总览")
     funds = service.list_funds()
@@ -275,7 +287,7 @@ def render_fund_management() -> None:
                 if show_trade_markers and buy_tx:
                     buy_df = pd.DataFrame(buy_tx)
                     buy_text = (
-                        buy_df["shares"].apply(lambda v: f"买入 {float(v):.2f}份")
+                        _sample_label_text(buy_df["shares"].apply(lambda v: f"买入 {float(v):.2f}份"))
                         if show_trade_labels
                         else None
                     )
@@ -288,12 +300,13 @@ def render_fund_management() -> None:
                             marker={"size": 8, "color": "#e74c3c", "symbol": "circle"},
                             text=buy_text,
                             textposition="top center",
+                            hovertemplate="买入日=%{x}<br>点位=%{y:.2f}%<extra></extra>",
                         )
                     )
                 if show_trade_markers and sell_tx:
                     sell_df = pd.DataFrame(sell_tx)
                     sell_text = (
-                        sell_df["shares"].apply(lambda v: f"卖出 {float(v):.2f}份")
+                        _sample_label_text(sell_df["shares"].apply(lambda v: f"卖出 {float(v):.2f}份"))
                         if show_trade_labels
                         else None
                     )
@@ -306,6 +319,7 @@ def render_fund_management() -> None:
                             marker={"size": 8, "color": "#2ecc71", "symbol": "diamond"},
                             text=sell_text,
                             textposition="bottom center",
+                            hovertemplate="卖出日=%{x}<br>点位=%{y:.2f}%<extra></extra>",
                         )
                     )
                 fig_nav.update_layout(
