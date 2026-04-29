@@ -189,6 +189,16 @@ def test_data_persists_across_service_instances(tmp_path: Path) -> None:
     assert open_points[0]["remaining_shares"] == 80
 
 
+def test_export_transactions_csv_contains_expected_columns_and_rows(service: PortfolioService) -> None:
+    fund = service.add_fund("600001", "导出测试基金", 1.0, "2026-06-01")
+    service.add_buy(fund["id"], "2026-06-02", "2026-06-03", 1.11, 10)
+    service.add_sell(fund["id"], "2026-06-04", "2026-06-05", 1.12, 3)
+    csv_text = service.export_transactions_csv(fund["id"])
+    assert "tx_type,apply_date,confirm_date,price,shares,amount" in csv_text
+    assert "buy,2026-06-02,2026-06-03,1.11,10.0,11.1" in csv_text
+    assert "sell,2026-06-04,2026-06-05,1.12,3.0,3.36" in csv_text
+
+
 def test_auto_fetch_fund_info_with_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     sample_js = """
     var fS_name = "示例基金";

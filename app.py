@@ -196,6 +196,13 @@ def render_trades_and_chart() -> None:
         )
         st.markdown("**交易记录**")
         st.dataframe(tx_df[["交易类型", "申请日", "确认日", "价格", "份额", "金额"]], use_container_width=True)
+        csv_content = service.export_transactions_csv(fund_id, date_field=date_field)
+        st.download_button(
+            label="导出当前基金交易CSV",
+            data=csv_content,
+            file_name=f"fund_{selected_fund['code']}_transactions.csv",
+            mime="text/csv",
+        )
 
     nav_points = service.get_nav_points(fund_id)
     if not nav_points:

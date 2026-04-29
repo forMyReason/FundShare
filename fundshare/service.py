@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from io import StringIO
 from typing import Any
 
 from .fund_api import FundApiClient
@@ -167,6 +168,16 @@ class PortfolioService:
 
     def auto_fetch_fund_info(self, code: str, target_date: str) -> tuple[str, float]:
         return self.api_client.fetch_name_and_nav(code, target_date)
+
+    def export_transactions_csv(self, fund_id: int, date_field: str = "confirm_date") -> str:
+        txs = self.get_transactions(fund_id, date_field=date_field)
+        output = StringIO()
+        output.write("tx_type,apply_date,confirm_date,price,shares,amount\n")
+        for tx in txs:
+            output.write(
+                f"{tx['tx_type']},{tx['apply_date']},{tx['confirm_date']},{tx['price']},{tx['shares']},{tx['amount']}\n"
+            )
+        return output.getvalue()
 
     @staticmethod
     def _validate_trade_inputs(apply_date: str, confirm_date: str, price: float, shares: float) -> None:
