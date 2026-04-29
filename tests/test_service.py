@@ -149,6 +149,23 @@ def test_storage_migrates_legacy_transaction_date(tmp_path: Path) -> None:
     assert "date" not in tx
 
 
+def test_data_persists_across_service_instances(tmp_path: Path) -> None:
+    db_path = tmp_path / "persist.json"
+    s1 = PortfolioService(JsonStorage(str(db_path)))
+    fund = s1.add_fund("400001", "重启持久化基金", 1.0, "2026-05-01")
+    s1.add_buy(fund["id"], "2026-05-02", "2026-05-03", 1.01, 100)
+    s1.add_sell(fund["id"], "2026-05-04", "2026-05-05", 1.02, 20)
+
+    s2 = PortfolioService(JsonStorage(str(db_path)))
+    funds = s2.list_funds()
+    txs = s2.get_transactions(fund["id"])
+    open_points = s2.get_open_buy_points(fund["id"])
+    assert len(funds) == 1
+    assert funds[0]["code"] == "400001"
+    assert len(txs) == 2
+    assert open_points[0]["remaining_shares"] == 80
+
+
 def test_auto_fetch_fund_info_with_mock(monkeypatch: pytest.MonkeyPatch) -> None:
     sample_js = """
     var fS_name = "示例基金";
