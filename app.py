@@ -35,17 +35,13 @@ def _auto_fill_new_fund() -> None:
     st.session_state["new_fund_fetch_error"] = ""
 
 
-def _auto_fill_trade_price(mode: str, code: str) -> None:
-    date_key = f"{mode}_confirm_date"
-    price_key = f"{mode}_price"
-    target_date = st.session_state.get(date_key, date.today())
-    if not code:
-        return
+@st.cache_data(ttl=600, show_spinner=False)
+def _fetch_nav_by_date(code: str, date_str: str) -> float | None:
     try:
-        _, auto_nav = service.auto_fetch_fund_info(code, target_date.isoformat())
-    except Exception:
-        return
-    st.session_state[price_key] = float(auto_nav)
+        _, nav = service.auto_fetch_fund_info(code, date_str)
+    except Exception:  # noqa: BLE001
+        return None
+    return float(nav)
 
 
 def render_fund_management() -> None:
@@ -128,12 +124,21 @@ def render_trades_and_chart() -> None:
             st.markdown("**买入**")
             apply_d = st.date_input("买入申请日", value=date.today(), key="buy_apply_date")
             confirm_d = st.date_input("买入确认日", value=date.today(), key="buy_confirm_date")
-            if st.form_submit_button("按确认日自动带入净值"):
-                _auto_fill_trade_price("buy", selected_fund["code"])
-                st.rerun()
-            price = st.number_input(
-                "买入确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="buy_price"
-            )
+            auto_price = st.checkbox("使用确认日自动净值", value=True, key="buy_auto_price")
+            buy_auto_nav = _fetch_nav_by_date(selected_fund["code"], confirm_d.isoformat())
+            if auto_price:
+                if buy_auto_nav is None:
+                    st.warning("未获取到确认日净值，请切换为手动输入。")
+                    price = st.number_input(
+                        "买入确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="buy_price"
+                    )
+                else:
+                    price = buy_auto_nav
+                    st.info(f"买入确认净值（自动）: {price:.4f}")
+            else:
+                price = st.number_input(
+                    "买入确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="buy_price"
+                )
             shares = st.number_input("买入份额", min_value=0.0001, value=100.0, step=1.0, format="%.4f")
             amount = round(price * shares, 4)
             st.write(f"自动计算金额: **{amount}**")
@@ -147,12 +152,21 @@ def render_trades_and_chart() -> None:
             st.markdown("**卖出（FIFO）**")
             apply_d = st.date_input("卖出申请日", value=date.today(), key="sell_apply_date")
             confirm_d = st.date_input("卖出确认日", value=date.today(), key="sell_confirm_date")
-            if st.form_submit_button("按确认日自动带入净值", type="secondary"):
-                _auto_fill_trade_price("sell", selected_fund["code"])
-                st.rerun()
-            price = st.number_input(
-                "卖出确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="sell_price"
-            )
+            auto_price = st.checkbox("使用确认日自动净值", value=True, key="sell_auto_price")
+            sell_auto_nav = _fetch_nav_by_date(selected_fund["code"], confirm_d.isoformat())
+            if auto_price:
+                if sell_auto_nav is None:
+                    st.warning("未获取到确认日净值，请切换为手动输入。")
+                    price = st.number_input(
+                        "卖出确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="sell_price"
+                    )
+                else:
+                    price = sell_auto_nav
+                    st.info(f"卖出确认净值（自动）: {price:.4f}")
+            else:
+                price = st.number_input(
+                    "卖出确认净值", min_value=0.0001, value=1.0, step=0.0001, format="%.4f", key="sell_price"
+                )
             shares = st.number_input("卖出份额", min_value=0.0001, value=100.0, step=1.0, format="%.4f", key="sell_shares")
             submitted = st.form_submit_button("记录卖出")
             if submitted:

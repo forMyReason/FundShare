@@ -92,6 +92,12 @@ def test_apply_date_basis_changes_order_and_marker_date(service: PortfolioServic
     assert open_by_apply[0]["date"] == "2026-04-08"
 
 
+def test_invalid_date_field_raises(service: PortfolioService) -> None:
+    fund = service.add_fund("000006", "口径异常测试", 1.0, "2026-04-01")
+    with pytest.raises(ValueError):
+        service.get_transactions(fund["id"], date_field="trade_date")
+
+
 def test_storage_normalizes_old_schema(tmp_path: Path) -> None:
     db_path = tmp_path / "store.json"
     db_path.write_text(
@@ -103,6 +109,24 @@ def test_storage_normalizes_old_schema(tmp_path: Path) -> None:
     assert "nav_points" in data
     assert "nav" in data["next_ids"]
     assert data["next_ids"]["nav"] == 1
+
+
+def test_storage_migrates_legacy_transaction_date(tmp_path: Path) -> None:
+    db_path = tmp_path / "store.json"
+    db_path.write_text(
+        (
+            '{"funds":[{"id":1,"code":"1","name":"n","current_nav":1.0}],'
+            '"transactions":[{"id":1,"fund_id":1,"tx_type":"buy","date":"2026-01-01","price":1.0,"shares":1.0,"amount":1.0}],'
+            '"nav_points":[],"next_ids":{"fund":2,"tx":2,"nav":1}}'
+        ),
+        encoding="utf-8",
+    )
+    storage = JsonStorage(str(db_path))
+    data = storage.load()
+    tx = data["transactions"][0]
+    assert tx["apply_date"] == "2026-01-01"
+    assert tx["confirm_date"] == "2026-01-01"
+    assert "date" not in tx
 
 
 def test_auto_fetch_fund_info_with_mock(monkeypatch: pytest.MonkeyPatch) -> None:
