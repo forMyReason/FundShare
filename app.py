@@ -918,13 +918,10 @@ def render_trades_and_chart() -> None:
         st.info("暂无净值数据，无法绘制曲线。")
         return
     st.markdown("##### 净值曲线")
-    chart_range = st.radio(
-        "区间",
-        ["全部", "近1月", "近3月", "近1年"],
-        horizontal=True,
-        index=0,
-        key=f"nav_chart_range_{fund_id}",
-    )
+    chart_key = f"nav_chart_range_{fund_id}"
+    if chart_key not in st.session_state:
+        st.session_state[chart_key] = "近1年"
+    chart_range = str(st.session_state[chart_key])
 
     win_start, win_end = service.nav_chart_date_window(nav_points, chart_range)
     nav_filtered = service.filter_records_by_date_range(nav_points, "date", win_start, win_end)
@@ -973,7 +970,7 @@ def render_trades_and_chart() -> None:
                 y=nav_df["nav"],
                 mode="lines",
                 name="净值走势",
-                line={"width": 2},
+                line={"width": 2.5, "color": "#f5a623"},
             ),
             secondary_y=False,
         )
@@ -983,7 +980,7 @@ def render_trades_and_chart() -> None:
                 y=nav_pct,
                 mode="lines",
                 name="点间涨跌%",
-                line={"dash": "dot", "width": 1},
+                line={"dash": "dot", "width": 1.2, "color": "#95a5a6"},
             ),
             secondary_y=True,
         )
@@ -995,7 +992,7 @@ def render_trades_and_chart() -> None:
                     y=open_df["price"],
                     mode="markers",
                     name="买入点",
-                    marker={"color": "red", "size": 10, "symbol": "circle"},
+                    marker={"color": "#f25278", "size": 8, "symbol": "circle"},
                     text=open_df.apply(
                         lambda row: f"买入份额: {float(row['original_shares']):.2f} | 剩余份额: {float(row['remaining_shares']):.2f}",
                         axis=1,
@@ -1005,10 +1002,11 @@ def render_trades_and_chart() -> None:
                 secondary_y=False,
             )
         fig.update_layout(
-            title=f"净值曲线与当前持仓买入点（{analysis_basis}）",
+            title="",
             legend_title="图例",
             template=plotly_tpl,
             xaxis_rangeslider_visible=True,
+            legend={"orientation": "h", "y": 1.05, "x": 0.0},
         )
         fig.update_xaxes(title_text="日期")
         fig.update_yaxes(title_text="净值", secondary_y=False)
@@ -1021,7 +1019,7 @@ def render_trades_and_chart() -> None:
                 y=nav_df["nav"],
                 mode="lines",
                 name="净值走势",
-                line={"width": 2},
+                line={"width": 2.5, "color": "#f5a623"},
             )
         )
         if buy_points:
@@ -1032,7 +1030,7 @@ def render_trades_and_chart() -> None:
                     y=open_df["price"],
                     mode="markers",
                     name="买入点",
-                    marker={"color": "red", "size": 10, "symbol": "circle"},
+                    marker={"color": "#f25278", "size": 8, "symbol": "circle"},
                     text=open_df.apply(
                         lambda row: f"买入份额: {float(row['original_shares']):.2f} | 剩余份额: {float(row['remaining_shares']):.2f}",
                         axis=1,
@@ -1043,14 +1041,21 @@ def render_trades_and_chart() -> None:
         else:
             st.caption("当前区间内无买入点。")
         fig.update_layout(
-            title=f"净值曲线与当前持仓买入点（{analysis_basis}）",
+            title="",
             xaxis_title="日期",
             yaxis_title="净值",
             legend_title="图例",
             template=plotly_tpl,
             xaxis_rangeslider_visible=True,
+            legend={"orientation": "h", "y": 1.05, "x": 0.0},
         )
     st.plotly_chart(fig, use_container_width=True)
+    st.radio(
+        "区间",
+        ["近3月", "近6月", "近1年", "近3年", "近5年", "全部"],
+        horizontal=True,
+        key=chart_key,
+    )
 
 tab1, tab2, tab3, tab4 = st.tabs(["组合总览", "基金管理", "交易与净值", "维护"])
 with tab1:

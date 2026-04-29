@@ -717,13 +717,13 @@ class PortfolioService:
     def nav_chart_date_window(
         nav_points: list[dict[str, Any]], preset: str
     ) -> tuple[str | None, str | None]:
-        """preset: 全部 | 近1月 | 近3月 | 近1年. Returns (start_iso, end_iso) inclusive; None means unbounded."""
+        """Returns (start_iso, end_iso) inclusive; None means unbounded."""
         if not nav_points or preset == "全部":
             return None, None
         dates = sorted(p["date"] for p in nav_points)
         end = dates[-1]
         end_d = datetime.strptime(end, "%Y-%m-%d").date()
-        days = {"近1月": 30, "近3月": 90, "近1年": 365}.get(preset, 0)
+        days = {"近1月": 30, "近3月": 90, "近6月": 180, "近1年": 365, "近3年": 1095, "近5年": 1825}.get(preset, 0)
         if days <= 0:
             return None, None
         start_d = end_d - timedelta(days=days)
