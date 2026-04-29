@@ -78,6 +78,11 @@ def _fetch_nav_trend_cached(code: str) -> list[dict]:
     return service.api_client.fetch_nav_trend(code)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def _fetch_index_trend_cached(secid: str) -> list[dict]:
+    return service.api_client.fetch_index_trend(secid)
+
+
 def _fund_cumulative_pnl(summary: dict, txs: list[dict]) -> float:
     buy_amount = sum(float(tx["amount"]) for tx in txs if tx["tx_type"] == "buy")
     sell_amount = sum(float(tx["amount"]) for tx in txs if tx["tx_type"] == "sell")
@@ -109,6 +114,17 @@ def _filter_nav_by_range(df: pd.DataFrame, preset: str) -> pd.DataFrame:
     d["date_ts"] = pd.to_datetime(d["date"])
     out = d[d["date_ts"] >= start_ts].drop(columns=["date_ts"])
     return out if not out.empty else df.tail(min(len(df), 90))
+
+
+def _normalize_series_to_pct(df: pd.DataFrame, value_col: str) -> pd.DataFrame:
+    if df.empty:
+        return df
+    out = df.copy()
+    base = float(out[value_col].iloc[0])
+    if base <= 1e-12:
+        return pd.DataFrame()
+    out["perf_pct"] = (out[value_col].astype(float) / base - 1.0) * 100.0
+    return out
 
 
 def render_fund_management() -> None:
@@ -209,17 +225,22 @@ def render_fund_management() -> None:
                     key=f"fund_perf_period_{f['id']}",
                 )
                 nav_df = _filter_nav_by_range(nav_df, period)
-                base_nav = float(nav_df["nav"].iloc[0])
-                if base_nav <= 1e-12:
+                nav_df = _normalize_series_to_pct(nav_df, "nav")
+                if nav_df.empty:
                     st.warning("基准净值异常（<=0），无法计算该区间涨跌幅。")
                     continue
-                nav_df["perf_pct"] = (nav_df["nav"].astype(float) / base_nav - 1.0) * 100.0
                 c_opt1, c_opt2 = st.columns(2)
                 show_trade_markers = c_opt1.checkbox(
                     "显示买卖点", value=True, key=f"fund_perf_markers_{f['id']}"
                 )
                 show_trade_labels = c_opt2.checkbox(
                     "显示点位标签", value=False, key=f"fund_perf_marker_labels_{f['id']}"
+                )
+                benchmark_pick = st.selectbox(
+                    "对标基准",
+                    ["无", "沪深300", "中证消费"],
+                    index=0,
+                    key=f"fund_perf_bm_{f['id']}",
                 )
                 fig_nav = go.Figure()
                 fig_nav.add_trace(
@@ -231,6 +252,24 @@ def render_fund_management() -> None:
                         line={"width": 2},
                     )
                 )
+                bm_map = {"沪深300": "1.000300", "中证消费": "1.000932"}
+                if benchmark_pick in bm_map:
+                    try:
+                        bm_df = pd.DataFrame(_fetch_index_trend_cached(bm_map[benchmark_pick]))
+                        bm_df = _filter_nav_by_range(bm_df.rename(columns={"close": "nav"}), period)
+                        bm_df = _normalize_series_to_pct(bm_df, "nav")
+                        if not bm_df.empty:
+                            fig_nav.add_trace(
+                                go.Scatter(
+                                    x=bm_df["date"],
+                                    y=bm_df["perf_pct"],
+                                    mode="lines",
+                                    name=benchmark_pick,
+                                    line={"width": 1.5, "dash": "dot"},
+                                )
+                            )
+                    except Exception:  # noqa: BLE001
+                        st.caption(f"{benchmark_pick} 对标获取失败，已忽略。")
                 buy_tx = [tx for tx in txs if tx["tx_type"] == "buy"]
                 sell_tx = [tx for tx in txs if tx["tx_type"] == "sell"]
                 if show_trade_markers and buy_tx:
@@ -243,7 +282,7 @@ def render_fund_management() -> None:
                     fig_nav.add_trace(
                         go.Scatter(
                             x=buy_df["confirm_date"],
-                            y=(buy_df["price"].astype(float) / base_nav - 1.0) * 100.0,
+                            y=(buy_df["price"].astype(float) / float(nav_df["nav"].iloc[0]) - 1.0) * 100.0,
                             mode="markers",
                             name="买入点",
                             marker={"size": 8, "color": "#e74c3c", "symbol": "circle"},
@@ -261,7 +300,7 @@ def render_fund_management() -> None:
                     fig_nav.add_trace(
                         go.Scatter(
                             x=sell_df["confirm_date"],
-                            y=(sell_df["price"].astype(float) / base_nav - 1.0) * 100.0,
+                            y=(sell_df["price"].astype(float) / float(nav_df["nav"].iloc[0]) - 1.0) * 100.0,
                             mode="markers",
                             name="卖出点",
                             marker={"size": 8, "color": "#2ecc71", "symbol": "diamond"},

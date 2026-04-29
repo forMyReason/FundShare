@@ -697,3 +697,36 @@ def test_fund_api_fetch_nav_trend(monkeypatch: pytest.MonkeyPatch) -> None:
     assert trend[0]["nav"] == 1.2345
     assert trend[1]["date"] == "2024-04-02"
 
+
+def test_fund_api_extract_index_klines() -> None:
+    text = (
+        '{"data":{"klines":['
+        '"2026-01-01,10,11,9,10.5,1,2,3",'
+        '"2026-01-02,11,12,10,11.5,1,2,3"'
+        "]}}"
+    )
+    rows = FundApiClient._extract_index_klines(text)
+    assert len(rows) == 2
+    assert rows[0]["date"] == "2026-01-01"
+    assert rows[0]["close"] == 11.0
+    assert rows[1]["close"] == 12.0
+
+
+def test_fund_api_fetch_index_trend(monkeypatch: pytest.MonkeyPatch) -> None:
+    body = '{"data":{"klines":["2026-01-01,10,11,9,10.5,1,2,3"]}}'
+
+    def _get(*_a: object, **_kw: object) -> object:
+        class R:
+            text = body
+
+            @staticmethod
+            def raise_for_status() -> None:
+                return None
+
+        return R()
+
+    monkeypatch.setattr(requests, "get", _get)
+    client = FundApiClient()
+    rows = client.fetch_index_trend("1.000300")
+    assert rows == [{"date": "2026-01-01", "close": 11.0}]
+

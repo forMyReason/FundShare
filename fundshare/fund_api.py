@@ -41,6 +41,37 @@ class FundApiClient:
         rows.sort(key=lambda r: r["date"])
         return rows
 
+    def fetch_index_trend(self, secid: str) -> list[dict[str, Any]]:
+        """Fetch index daily close trend from Eastmoney kline API.
+
+        secid examples:
+        - 1.000300 (沪深300)
+        - 1.000932 (中证消费)
+        """
+        secid = secid.strip()
+        if not secid:
+            raise ValueError("secid 不能为空")
+        url = (
+            "http://push2his.eastmoney.com/api/qt/stock/kline/get"
+            f"?secid={secid}"
+            "&fields1=f1,f2,f3,f4,f5,f6"
+            "&fields2=f51,f52,f53,f54,f55,f56,f57,f58"
+            "&klt=101&fqt=1&beg=0&end=20500000"
+        )
+        last_exc: requests.RequestException | None = None
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, timeout=self.timeout)
+                resp.raise_for_status()
+                return self._extract_index_klines(resp.text)
+            except requests.RequestException as e:
+                last_exc = e
+                if attempt < 2:
+                    time.sleep(0.35 * (attempt + 1))
+        if last_exc is None:
+            raise RuntimeError("unexpected fetch state")
+        raise last_exc
+
     def _fetch_fund_js(self, code: str) -> str:
         now = time.monotonic()
         hit = self._js_cache.get(code)
@@ -94,4 +125,22 @@ class FundApiClient:
         if not trend:
             raise ValueError("净值走势数据为空")
         return trend
+
+    @staticmethod
+    def _extract_index_klines(text: str) -> list[dict[str, Any]]:
+        try:
+            payload = json.loads(text)
+            klines = payload["data"]["klines"]
+        except (KeyError, TypeError, json.JSONDecodeError) as e:
+            raise ValueError("指数走势解析失败") from e
+        if not klines:
+            raise ValueError("指数走势数据为空")
+        rows: list[dict[str, Any]] = []
+        for row in klines:
+            parts = str(row).split(",")
+            if len(parts) < 3:
+                continue
+            rows.append({"date": parts[0], "close": float(parts[2])})
+        rows.sort(key=lambda r: r["date"])
+        return rows
 
