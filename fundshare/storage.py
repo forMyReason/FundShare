@@ -21,13 +21,22 @@ class JsonStorage:
             self.save(deepcopy(DEFAULT_DB))
 
     def load(self) -> dict[str, Any]:
-        with self.db_path.open("r", encoding="utf-8") as f:
-            data = json.load(f)
+        try:
+            with self.db_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except json.JSONDecodeError:
+            backup = self._backup_path()
+            if not backup.exists():
+                raise
+            with backup.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+            # Restore corrupted primary file from backup.
+            self._atomic_write(data)
         return self._normalize(data)
 
     def save(self, data: dict[str, Any]) -> None:
-        with self.db_path.open("w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
+        self._atomic_write(data)
+        self._backup_path().write_text(self.db_path.read_text(encoding="utf-8"), encoding="utf-8")
 
     def _normalize(self, data: dict[str, Any]) -> dict[str, Any]:
         # Backward compatibility for old store.json created before nav_points/nav IDs were added.
@@ -51,4 +60,13 @@ class JsonStorage:
             return 1
         max_id = max(int(item.get("id", 0)) for item in items)
         return max_id + 1
+
+    def _backup_path(self) -> Path:
+        return self.db_path.with_suffix(self.db_path.suffix + ".bak")
+
+    def _atomic_write(self, data: dict[str, Any]) -> None:
+        tmp_path = self.db_path.with_suffix(self.db_path.suffix + ".tmp")
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        tmp_path.replace(self.db_path)
 

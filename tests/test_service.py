@@ -149,6 +149,29 @@ def test_storage_migrates_legacy_transaction_date(tmp_path: Path) -> None:
     assert "date" not in tx
 
 
+def test_storage_recovers_from_backup_when_primary_corrupted(tmp_path: Path) -> None:
+    db_path = tmp_path / "store.json"
+    storage = JsonStorage(str(db_path))
+    data = storage.load()
+    data["funds"].append({"id": 1, "code": "500001", "name": "恢复测试", "current_nav": 1.0})
+    data["next_ids"]["fund"] = 2
+    storage.save(data)
+
+    # Corrupt primary file and ensure backup restore path works.
+    db_path.write_text("{broken-json", encoding="utf-8")
+    recovered = storage.load()
+    assert recovered["funds"][0]["code"] == "500001"
+
+
+def test_storage_creates_backup_on_save(tmp_path: Path) -> None:
+    db_path = tmp_path / "store.json"
+    storage = JsonStorage(str(db_path))
+    data = storage.load()
+    storage.save(data)
+    backup_path = db_path.with_suffix(".json.bak")
+    assert backup_path.exists()
+
+
 def test_data_persists_across_service_instances(tmp_path: Path) -> None:
     db_path = tmp_path / "persist.json"
     s1 = PortfolioService(JsonStorage(str(db_path)))
