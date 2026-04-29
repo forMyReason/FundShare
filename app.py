@@ -210,6 +210,9 @@ def render_fund_management() -> None:
                 )
                 nav_df = _filter_nav_by_range(nav_df, period)
                 base_nav = float(nav_df["nav"].iloc[0])
+                if base_nav <= 1e-12:
+                    st.warning("基准净值异常（<=0），无法计算该区间涨跌幅。")
+                    continue
                 nav_df["perf_pct"] = (nav_df["nav"].astype(float) / base_nav - 1.0) * 100.0
                 c_opt1, c_opt2 = st.columns(2)
                 show_trade_markers = c_opt1.checkbox(
