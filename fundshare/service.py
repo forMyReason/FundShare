@@ -34,6 +34,16 @@ class PortfolioService:
         data = self._load()
         return data["funds"]
 
+    def delete_fund(self, fund_id: int) -> None:
+        data = self._load()
+        self._ensure_fund(data, fund_id)
+        if self._total_remaining_shares(data, fund_id) > 1e-9:
+            raise DomainError("尚有持仓份额，无法删除基金")
+        data["funds"] = [f for f in data["funds"] if f["id"] != fund_id]
+        data["nav_points"] = [p for p in data["nav_points"] if p["fund_id"] != fund_id]
+        data["transactions"] = [t for t in data["transactions"] if t["fund_id"] != fund_id]
+        self._save(data)
+
     def add_fund(self, code: str, name: str, current_nav: float, nav_date: str | None = None) -> dict[str, Any]:
         data = self._load()
         normalized_code = self.normalize_fund_code(code)

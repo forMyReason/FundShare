@@ -8,6 +8,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from fundshare.errors import DomainError
 from fundshare.service import PortfolioService
 
 
@@ -96,6 +97,17 @@ def render_fund_management() -> None:
         st.info("暂无基金，请先录入基金信息。")
         return
 
+    search_q = st.text_input("搜索基金（代码或名称）", "", key="fund_list_search").strip().lower()
+    if search_q:
+        funds = [
+            f
+            for f in funds
+            if search_q in str(f.get("code", "")).lower() or search_q in str(f.get("name", "")).lower()
+        ]
+        if not funds:
+            st.warning("无匹配的基金，请调整搜索关键字。")
+            return
+
     df = pd.DataFrame(funds)
     st.dataframe(df.rename(columns={"code": "代码", "name": "名称", "current_nav": "当前净值"}), use_container_width=True)
 
@@ -109,6 +121,18 @@ def render_fund_management() -> None:
         if submitted:
             service.update_fund_nav(options[selected], new_nav, d.isoformat())
             st.success("净值已更新。")
+
+    with st.expander("删除基金（无持仓时）"):
+        del_opts = {_format_fund_label(f): f["id"] for f in funds}
+        del_pick = st.selectbox("选择要删除的基金", options=list(del_opts.keys()), key="fund_delete_pick")
+        if st.button("确认删除该基金及其历史净值与交易", key="fund_delete_btn"):
+            try:
+                service.delete_fund(del_opts[del_pick])
+            except DomainError as e:
+                st.error(str(e))
+            else:
+                st.success("已删除。")
+                st.rerun()
 
 
 def render_trades_and_chart() -> None:
