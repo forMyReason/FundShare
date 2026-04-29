@@ -295,6 +295,25 @@ def test_get_remaining_shares(service: PortfolioService) -> None:
     assert service.get_remaining_shares(fund["id"]) == 40.0
 
 
+def test_delete_transaction_success(service: PortfolioService) -> None:
+    fund = service.add_fund("720101", "删除交易测试", 1.0, "2026-07-01")
+    b = service.add_buy(fund["id"], "2026-07-02", "2026-07-03", 1.0, 50)
+    s = service.add_sell(fund["id"], "2026-07-04", "2026-07-05", 1.1, 10)
+    service.delete_transaction(fund["id"], s["id"])
+    txs = service.get_transactions(fund["id"])
+    assert len(txs) == 1
+    assert txs[0]["id"] == b["id"]
+    assert service.get_remaining_shares(fund["id"]) == 50.0
+
+
+def test_delete_transaction_rejects_invalid_sequence(service: PortfolioService) -> None:
+    fund = service.add_fund("720102", "删买校验", 1.0, "2026-07-01")
+    b = service.add_buy(fund["id"], "2026-07-02", "2026-07-03", 1.0, 10)
+    service.add_sell(fund["id"], "2026-07-04", "2026-07-05", 1.1, 8)
+    with pytest.raises(ValueError):
+        service.delete_transaction(fund["id"], b["id"])
+
+
 def test_filter_transactions_by_date_range(service: PortfolioService) -> None:
     fund = service.add_fund("750001", "日期筛选测试", 1.0, "2026-07-01")
     service.add_buy(fund["id"], "2026-07-02", "2026-07-03", 1.0, 10)

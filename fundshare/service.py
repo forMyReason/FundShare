@@ -50,6 +50,17 @@ class PortfolioService:
         data["transactions"] = [t for t in data["transactions"] if t["fund_id"] != fund_id]
         self._save(data)
 
+    def delete_transaction(self, fund_id: int, tx_id: int) -> None:
+        data = self._load()
+        self._ensure_fund(data, fund_id)
+        txs = data["transactions"]
+        idx = next((i for i, t in enumerate(txs) if t["fund_id"] == fund_id and int(t["id"]) == int(tx_id)), -1)
+        if idx < 0:
+            raise DomainError("交易记录不存在")
+        txs.pop(idx)
+        self._ensure_trade_sequence_valid(data, fund_id)
+        self._save(data)
+
     def add_fund(self, code: str, name: str, current_nav: float, nav_date: str | None = None) -> dict[str, Any]:
         data = self._load()
         normalized_code = self.normalize_fund_code(code)
@@ -239,6 +250,20 @@ class PortfolioService:
         bought = sum(tx["shares"] for tx in data["transactions"] if tx["fund_id"] == fund_id and tx["tx_type"] == "buy")
         sold = sum(tx["shares"] for tx in data["transactions"] if tx["fund_id"] == fund_id and tx["tx_type"] == "sell")
         return float(bought - sold)
+
+    @staticmethod
+    def _ensure_trade_sequence_valid(data: dict[str, Any], fund_id: int, eps: float = 1e-9) -> None:
+        txs = [tx for tx in data["transactions"] if tx["fund_id"] == fund_id]
+        txs.sort(key=lambda x: (x["confirm_date"], int(x["id"])))
+        balance = 0.0
+        for tx in txs:
+            sh = float(tx["shares"])
+            if tx["tx_type"] == "buy":
+                balance += sh
+            else:
+                balance -= sh
+            if balance < -eps:
+                raise DomainError("删除后交易序列非法：历史卖出累计超过买入累计")
 
     def get_remaining_shares(self, fund_id: int) -> float:
         data = self._load()

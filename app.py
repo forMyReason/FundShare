@@ -443,6 +443,50 @@ def render_maintenance() -> None:
                 st.success("已删除。")
                 st.rerun()
 
+    with st.expander("删除买入/卖出记录", expanded=False):
+        tx_fund_opts = {_format_fund_label(f): f["id"] for f in funds}
+        tx_fund_pick = st.selectbox("选择基金", options=list(tx_fund_opts.keys()), key="maint_tx_fund_pick")
+        tx_fund_id = tx_fund_opts[tx_fund_pick]
+        tx_rows = service.get_transactions(tx_fund_id, date_field="confirm_date")
+        if not tx_rows:
+            st.caption("该基金暂无交易记录。")
+        else:
+            tx_preview = pd.DataFrame(tx_rows).sort_values(["confirm_date", "id"], ascending=[False, False]).rename(
+                columns={
+                    "id": "ID",
+                    "tx_type": "类型",
+                    "apply_date": "申请日",
+                    "confirm_date": "确认日",
+                    "price": "价格",
+                    "shares": "份额",
+                    "amount": "金额",
+                    "fee": "手续费",
+                }
+            )
+            st.dataframe(
+                tx_preview[["ID", "类型", "申请日", "确认日", "价格", "份额", "金额", "手续费"]],
+                use_container_width=True,
+                hide_index=True,
+                height=min(260, 52 + len(tx_preview) * 34),
+            )
+            tx_label_map = {
+                f"#{tx['id']} {tx['tx_type']} {tx['confirm_date']} 份额:{float(tx['shares']):.4f} 价格:{float(tx['price']):.4f}": int(tx["id"])
+                for tx in tx_rows
+            }
+            tx_pick_label = st.selectbox("选择要删除的交易", options=list(tx_label_map.keys()), key="maint_tx_delete_pick")
+            confirmed = st.checkbox("我确认删除该交易记录", value=False, key="maint_tx_delete_confirm")
+            if st.button("确认删除交易", key="maint_tx_delete_btn", type="primary"):
+                if not confirmed:
+                    st.error("请先勾选确认。")
+                else:
+                    try:
+                        service.delete_transaction(tx_fund_id, tx_label_map[tx_pick_label])
+                    except DomainError as e:
+                        st.error(str(e))
+                    else:
+                        st.success("交易记录已删除。")
+                        st.rerun()
+
 
 def render_trades_and_chart() -> None:
     st.subheader("交易与净值")
