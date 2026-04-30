@@ -8,6 +8,16 @@ from typing import Any
 
 import requests
 
+# 与常见浏览器一致；部分行情站会拒绝 requests 默认 User-Agent，导致手机/模拟器上拉取失败
+_DEFAULT_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+
 
 class FundApiClient:
     def __init__(self, timeout: float = 8.0, js_cache_ttl_sec: float = 120.0) -> None:
@@ -61,7 +71,7 @@ class FundApiClient:
         last_exc: requests.RequestException | None = None
         for attempt in range(3):
             try:
-                resp = requests.get(url, timeout=self.timeout)
+                resp = requests.get(url, timeout=self.timeout, headers=_DEFAULT_HEADERS)
                 resp.raise_for_status()
                 return self._extract_index_klines(resp.text)
             except requests.RequestException as e:
@@ -81,7 +91,7 @@ class FundApiClient:
         last_exc: requests.RequestException | None = None
         for attempt in range(3):
             try:
-                resp = requests.get(url, timeout=self.timeout)
+                resp = requests.get(url, timeout=self.timeout, headers=_DEFAULT_HEADERS)
                 resp.raise_for_status()
                 text = resp.text
                 self._js_cache[code] = (now, text)

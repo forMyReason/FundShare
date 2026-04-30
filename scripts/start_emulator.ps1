@@ -29,7 +29,13 @@ if (-not $env:JAVA_HOME) {
     if ($jbr) { $env:JAVA_HOME = $jbr }
 }
 $avd = "FundShare_API34"
-$argList = @("-avd", $avd, "-netdelay", "none", "-netspeed", "full")
+# -dns-server：部分环境下模拟器默认 DNS 解析失败会导致东方财富等接口「无法联网」
+$argList = @(
+    "-avd", $avd,
+    "-netdelay", "none",
+    "-netspeed", "full",
+    "-dns-server", "8.8.8.8,8.8.4.4"
+)
 
 if ($Detach) {
     Write-Host "已尝试在后台启动模拟器 $avd …" -ForegroundColor Cyan

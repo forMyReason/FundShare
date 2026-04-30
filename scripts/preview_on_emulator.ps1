@@ -69,7 +69,13 @@ function Ensure-Emulator {
         Write-Error "未找到 emulator.exe: $emu"
     }
     Write-Host "后台启动 AVD FundShare_API34 …" -ForegroundColor Cyan
-    Start-Process -FilePath $emu -ArgumentList @("-avd", "FundShare_API34", "-netdelay", "none", "-netspeed", "full") -WorkingDirectory (Split-Path $emu)
+    $emuArgs = @(
+        "-avd", "FundShare_API34",
+        "-netdelay", "none",
+        "-netspeed", "full",
+        "-dns-server", "8.8.8.8,8.8.4.4"
+    )
+    Start-Process -FilePath $emu -ArgumentList $emuArgs -WorkingDirectory (Split-Path $emu)
     Invoke-Adb wait-for-device | Out-Null
     Wait-BootCompleted
 }

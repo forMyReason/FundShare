@@ -844,7 +844,7 @@ def test_fund_api_target_before_all_data_raises() -> None:
 def test_fund_api_retries_on_transient_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = {"n": 0}
 
-    def _fake_get(url: str, timeout: float):  # noqa: ANN001
+    def _fake_get(url: str, timeout: float, **_kwargs: object) -> object:  # noqa: ANN001
         calls["n"] += 1
         if calls["n"] < 2:
             raise requests.ConnectionError("down")
@@ -875,7 +875,7 @@ def test_fund_api_http_error_propagates(monkeypatch: pytest.MonkeyPatch) -> None
         def raise_for_status() -> None:
             raise requests.HTTPError("boom")
 
-    def _fake_get(url: str, timeout: float):  # noqa: ANN001
+    def _fake_get(url: str, timeout: float, **_kwargs: object) -> object:  # noqa: ANN001
         return _Resp()
 
     monkeypatch.setattr(requests, "get", _fake_get)
