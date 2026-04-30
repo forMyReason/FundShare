@@ -7,6 +7,16 @@
 - **Android Studio** 2024.x（含 Android SDK、JDK 17）
 - 构建本机已安装 **Python 3.12**（与 Chaquopy `version = "3.12"` 一致，供 `pip` 与字节码步骤使用；Chaquo 会尝试 `py -3.12` 或 PATH 中的 `python`）
 
+### 是否必须装 Android Studio？
+
+- **可以完全不装**。体积大的是 **Android Studio 本体**；若你已有 **JDK 17 + Android SDK（命令行工具）+ Python 3.12**，用 **`gradlew assembleDebug`**、`adb`、`emulator.exe` 即可构建、装包、看模拟器窗口。  
+- **只想立刻在电脑上看到安卓模拟界面 + 本 App**：完成 **硬件加速**（见「模拟器与硬件加速」）后，在仓库根目录执行：
+  ```powershell
+  .\scripts\preview_on_emulator.ps1 -StartEmulator
+  ```
+  会在需要时后台拉起 **FundShare_API34**、安装 Debug APK 并打开主界面；**弹出的模拟器窗口就是安卓界面**，无需打开 Android Studio。  
+- **仍适合装 Studio 的情况**：经常改 Kotlin/Compose、需要 **Logcat / 断点调试** 时更省事。若不想装完整 IDE，可只下官方 **[Command line tools only](https://developer.android.com/studio#command-line-tools-only)**，用 `sdkmanager` 装 `platform-tools`、`emulator` 等。
+
 ### Windows 一键准备（PowerShell）
 
 在仓库根目录执行（将尝试 `winget` 安装 OpenJDK 17、写入 `local.properties`，并安装 Python 依赖）：
@@ -48,13 +58,16 @@ cd android
 
 ### 方式 A：Android 模拟器（全在电脑里）
 
-本机已可启动名为 **`FundShare_API34`** 的虚拟设备（Pixel 6 外形、Android 14 / API 34、Google APIs x86_64）。在仓库根目录执行：
+本机已可启动名为 **`FundShare_API34`** 的虚拟设备（Pixel 6 外形、Android 14 / API 34、Google APIs x86_64）。在 **PowerShell 里** 进入仓库根目录后执行（**不要双击** `.ps1`，否则黑窗容易一闪就关、看不到报错）：
 
 ```powershell
+cd C:\Users\DELL\Desktop\test_png\FundShare   # 改成你的仓库路径
 .\scripts\start_emulator.ps1
 ```
 
-会打开模拟器窗口；首次启动可能需 1～2 分钟。然后在 **Android Studio** 中打开 **`android/`** 工程，对 **app** 点 **Run**，选择 **FundShare_API34**，即可在电脑里看到 App 并点击。
+脚本会**在当前终端前台**启动模拟器，**启动日志会打印在终端**；若闪退，请把终端里红色/黄色报错复制出来排查。首次启动可能需 1～2 分钟。模拟器起来后，可在 **Android Studio** 中打开 **`android/`** 工程，对 **app** 点 **Run**，选 **FundShare_API34**。
+
+更省事：也可**双击**仓库里的 `scripts\start_emulator.cmd`（会开 PowerShell 并执行同一脚本，结束前有暂停便于看错）。
 
 若你尚未创建该 AVD，可在 Android Studio 中 **Tools → Device Manager → Create Device** 自建；或使用与本仓库一致的命令（需已安装 `emulator` 与对应 system-image）：
 
@@ -101,6 +114,29 @@ cmd /c "echo no | `"$sdk\cmdline-tools\latest\bin\avdmanager.bat`" create avd -n
 详见 [ANDROID_PARITY.md](ANDROID_PARITY.md)。
 
 ## 故障排除
+
+### 模拟器与硬件加速（`x86_64 emulation requires hardware acceleration` / `AEHD is not installed`）
+
+x86_64 系统镜像**必须**有 CPU 虚拟化加速。按下面顺序处理（做完一类后**重启**再试 `.\scripts\start_emulator.ps1`）：
+
+1. **安装 Android Emulator Hypervisor Driver（推荐先试）**  
+   - **图形界面**：Android Studio → **Settings** → **Android SDK** → **SDK Tools** → 勾选 **Android Emulator Hypervisor Driver** → **Apply**。  
+   - **命令行**（仓库根目录 PowerShell）：`.\scripts\install_emulator_hypervisor.ps1`，完成后按提示**以管理员身份**运行  
+     `%LOCALAPPDATA%\Android\Sdk\extras\google\Android_Emulator_Hypervisor_Driver\silent_install.bat`。  
+   官方说明：[在 Windows 上配置虚拟机加速](https://developer.android.com/studio/run/emulator-acceleration#vm-windows)。
+
+2. **启用 Windows 虚拟机监控程序**  
+   **设置** → **应用** → **可选功能** → **其他 Windows 功能** → 勾选 **Windows 虚拟机监控程序平台**（按需可同时勾选 **虚拟机平台**）→ 确定并**重启**。许多环境下模拟器会改用 **WHPX**，不再依赖 AEHD。
+
+3. **BIOS**  
+   开机进入 BIOS/UEFI，开启 **Intel VT-x** 或 **AMD-V / SVM**。
+
+4. **其他**  
+   - 日志里 `quickbootChoice.ini` 警告一般可忽略；若介意可删掉  
+     `C:\Users\<用户名>\.android\avd\FundShare_API34.avd\quickbootChoice.ini` 后重开模拟器。  
+   - 若因 **Hyper-V / WSL2** 等与 AEHD 冲突，优先尝试 **WHPX**（步骤 2）；仍不行时再对照 [模拟器加速文档](https://developer.android.com/studio/run/emulator-acceleration) 选择 AEHD 或 Hyper-V 方案。
+
+---
 
 - **构建报找不到 Python 3.12**：安装官方 Python 3.12，或在 `app/build.gradle.kts` 的 `chaquopy { defaultConfig { buildPython(...) } }` 中显式指定本机 `python.exe` 路径（参见 [Chaquopy 文档](https://chaquo.com/chaquopy/doc/current/android.html#buildpython)）。
 - **import fundshare 失败**：先执行一次 **Build > Make Project**，确保 `syncFundsharePython` 已执行且 `app/src/main/python/fundshare` 存在。
