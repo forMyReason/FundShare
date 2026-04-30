@@ -78,6 +78,24 @@ cmd /c "echo no | `"$sdk\cmdline-tools\latest\bin\avdmanager.bat`" create avd -n
 
 模拟器窗口支持键盘、鼠标滚轮与拖拽，与真机交互一致（部分传感器除外）。
 
+#### 改代码后，如何让模拟器里的 App 看到最新效果？
+
+命令行方案下**没有** Android Studio 的 Apply Changes 热替换：改了 **`android/`** 里的 Kotlin、Compose、资源，或仓库里的 **`fundshare/`**（构建时会同步进 APK），都需要 **重新打 Debug 包并覆盖安装**。
+
+1. **保持模拟器窗口不关**（或确保 `adb devices` 里能看到 `emulator-*`）。
+2. 在**仓库根目录** PowerShell 执行其一：
+   ```powershell
+   .\scripts\preview_on_emulator.ps1 -Rebuild
+   ```
+   或：
+   ```powershell
+   .\scripts\refresh_emulator_app.ps1
+   ```
+   会执行 **`assembleDebug` → `adb install -r` → 再次启动主界面**，模拟器里看到的就是最新构建。
+
+若当前没有已连接设备，可加 `-StartEmulator`：  
+`.\scripts\preview_on_emulator.ps1 -Rebuild -StartEmulator`。
+
 ### 方式 B：真机投屏（scrcpy，适合 MIUI 真机）
 
 真机用 USB 连电脑，手机上打开 **开发者选项 → USB 调试**（MIUI 可能还需打开 **USB 调试（安全设置）** 才能用电脑鼠标点按）。
