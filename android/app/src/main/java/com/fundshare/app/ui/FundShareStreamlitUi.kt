@@ -60,6 +60,8 @@ fun FundShareStreamlitScreen(
     onRefresh: () -> Unit,
     snackbarHostState: SnackbarHostState,
     maintenanceRpc: suspend (String, String) -> String,
+    tradesPayloadFetcher: suspend (String) -> TradesPayload,
+    tradesRpc: suspend (String, String) -> RpcResponse,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val tabs = MainTab.entries
@@ -112,7 +114,20 @@ fun FundShareStreamlitScreen(
                 else -> when (tabs[tab]) {
                     MainTab.PORTFOLIO -> PortfolioTab(payload)
                     MainTab.FUNDS -> FundsTab(payload)
-                    MainTab.TRADES -> TradesTab(payload)
+                    MainTab.TRADES ->
+                        TradesTabContent(
+                            fullPayload = payload,
+                            fetchPayload = tradesPayloadFetcher,
+                            tradesRpc = tradesRpc,
+                            onUserMessage = { msg ->
+                                snackScope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        message = msg,
+                                        withDismissAction = true,
+                                    )
+                                }
+                            },
+                        )
                     MainTab.MAINT ->
                         MaintenanceTabContent(
                             payload = payload,

@@ -16,7 +16,10 @@ import androidx.compose.ui.graphics.Color
 import com.chaquo.python.Python
 import com.fundshare.app.ui.FullPayload
 import com.fundshare.app.ui.FundShareStreamlitScreen
+import com.fundshare.app.ui.TradesPayload
+import com.fundshare.app.ui.parseRpcResponse
 import com.fundshare.app.ui.parseFullPayload
+import com.fundshare.app.ui.parseTradesPayload
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -53,6 +56,30 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                val tradesPayloadFetcher: suspend (String) -> TradesPayload = { argJson ->
+                    withContext(Dispatchers.Default) {
+                        if (!Python.isStarted()) {
+                            parseTradesPayload("""{"funds":[],"error":"Python 未启动"}""")
+                        } else {
+                            val mod = Python.getInstance().getModule("fundshare_android.bridge")
+                            val raw = mod.callAttr("trades_payload_json_safe", argJson).toString()
+                            parseTradesPayload(raw)
+                        }
+                    }
+                }
+
+                val tradesRpc: suspend (String, String) -> com.fundshare.app.ui.RpcResponse = { op, argJson ->
+                    withContext(Dispatchers.Default) {
+                        if (!Python.isStarted()) {
+                            parseRpcResponse("""{"ok":false,"error":"Python 未启动"}""")
+                        } else {
+                            val mod = Python.getInstance().getModule("fundshare_android.bridge")
+                            val raw = mod.callAttr("trades_rpc", op, argJson).toString()
+                            parseRpcResponse(raw)
+                        }
+                    }
+                }
+
                 fun load() {
                     scope.launch {
                         loading = true
@@ -83,6 +110,8 @@ class MainActivity : ComponentActivity() {
                     onRefresh = { load() },
                     snackbarHostState = snackbarHostState,
                     maintenanceRpc = maintenanceRpc,
+                    tradesPayloadFetcher = tradesPayloadFetcher,
+                    tradesRpc = tradesRpc,
                 )
             }
         }
