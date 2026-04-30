@@ -84,3 +84,32 @@ def test_normalize_cleans_malformed_allocations(tmp_path: Path) -> None:
     st.save(d3)
     out = st.load()
     assert out["transactions"][0]["allocations"] == [{"buy_tx_id": 9, "shares": 1.0}]
+
+
+def test_normalize_drops_allocations_with_invalid_types(tmp_path: Path) -> None:
+    """Invalid shares/buy_tx_id types are skipped (storage.py except branch)."""
+    db = tmp_path / "store.json"
+    st = JsonStorage(str(db))
+    d = st.load()
+    d["funds"] = [{"id": 1, "code": "c", "name": "n", "current_nav": 1.0}]
+    d["transactions"] = [
+        {
+            "id": 1,
+            "fund_id": 1,
+            "tx_type": "sell",
+            "apply_date": "2026-01-02",
+            "confirm_date": "2026-01-02",
+            "price": 1.0,
+            "shares": 1.0,
+            "amount": 1.0,
+            "fee": 0.0,
+            "allocations": [
+                {"buy_tx_id": 1, "shares": 1.0},
+                {"buy_tx_id": 1, "shares": "not-a-number"},
+            ],
+        }
+    ]
+    d["next_ids"] = {"fund": 2, "tx": 2, "nav": 1}
+    st.save(d)
+    out = st.load()
+    assert out["transactions"][0]["allocations"] == [{"buy_tx_id": 1, "shares": 1.0}]
