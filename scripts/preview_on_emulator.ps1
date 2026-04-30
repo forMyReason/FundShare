@@ -52,10 +52,20 @@ function Invoke-Adb {
     }
 }
 
+function Fix-EmulatorNetworkFromHost {
+    Write-Host "修正模拟器 DNS / 键盘相关系统设置 …" -ForegroundColor Cyan
+    Invoke-Adb shell settings put global private_dns_mode 1 | Out-Null
+    Invoke-Adb shell settings delete global private_dns_specifier 2>$null | Out-Null
+    Invoke-Adb shell settings put secure show_ime_with_hard_keyboard 0 | Out-Null
+}
+
 function Ensure-Emulator {
     $list = Invoke-Adb devices
     $online = $list | Where-Object { $_ -match "`tdevice$" }
-    if ($online) { return }
+    if ($online) {
+        Fix-EmulatorNetworkFromHost
+        return
+    }
 
     if (-not $StartEmulator) {
         Write-Host "当前没有已连接的模拟器/真机。" -ForegroundColor Yellow
@@ -78,6 +88,7 @@ function Ensure-Emulator {
     Start-Process -FilePath $emu -ArgumentList $emuArgs -WorkingDirectory (Split-Path $emu)
     Invoke-Adb wait-for-device | Out-Null
     Wait-BootCompleted
+    Fix-EmulatorNetworkFromHost
 }
 
 if ($Rebuild -or -not (Test-Path $Apk)) {
