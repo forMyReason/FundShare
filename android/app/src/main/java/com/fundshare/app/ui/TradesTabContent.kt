@@ -1,5 +1,6 @@
 package com.fundshare.app.ui
 
+import android.app.DatePickerDialog
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -44,6 +46,20 @@ import java.util.Locale
 private fun fmtMoney(v: Double): String = String.format(Locale.US, "%.2f", v)
 
 private fun fmt4(v: Double): String = String.format(Locale.US, "%.4f", v)
+
+private fun isIsoDate(v: String): Boolean = runCatching { LocalDate.parse(v); true }.getOrDefault(false)
+
+private fun showDatePicker(
+    currentValue: String,
+    onPick: (String) -> Unit,
+    createDialog: (year: Int, month: Int, day: Int, onDateSet: (Int, Int, Int) -> Unit) -> DatePickerDialog,
+) {
+    val current = runCatching { LocalDate.parse(currentValue) }.getOrDefault(LocalDate.now())
+    createDialog(current.year, current.monthValue - 1, current.dayOfMonth)
+    { year, month, day ->
+        onPick(LocalDate.of(year, month + 1, day).toString())
+    }.show()
+}
 
 private fun pnlColor(v: Double): Color =
     when {
@@ -80,6 +96,7 @@ fun TradesTabContent(
     tradesRpc: suspend (String, String) -> RpcResponse,
     onUserMessage: (String) -> Unit,
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val funds = fullPayload.funds
     var selectedFundId by remember { mutableStateOf(funds.firstOrNull()?.id ?: 0) }
@@ -218,7 +235,26 @@ fun TradesTabContent(
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("买入", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(buyConfirmDate, { buyConfirmDate = it }, label = { Text("买入确认日（YYYY-MM-DD）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = buyConfirmDate,
+                        onValueChange = {},
+                        label = { Text("买入确认日（YYYY-MM-DD）") },
+                        readOnly = true,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(
+                        onClick = {
+                            showDatePicker(
+                                currentValue = buyConfirmDate,
+                                onPick = { buyConfirmDate = it },
+                                createDialog = { y, m, d, onDateSet ->
+                                    DatePickerDialog(context, { _, yy, mm, dd -> onDateSet(yy, mm, dd) }, y, m, d)
+                                },
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("选择买入日期") }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected = buyMode == "price", onClick = { buyMode = "price" }, label = { Text("按净值+份额") })
                         FilterChip(selected = buyMode == "amount", onClick = { buyMode = "amount" }, label = { Text("按金额+份额") })
@@ -242,7 +278,7 @@ fun TradesTabContent(
                             val price =
                                 if (buyMode == "price") (buyPrice.toDoubleOrNull() ?: 0.0)
                                 else (buyAmount.toDoubleOrNull() ?: 0.0) / maxOf(1e-9, sh)
-                            if (buyConfirmDate.isBlank() || sh <= 0.0 || price <= 0.0) {
+                            if (!isIsoDate(buyConfirmDate) || sh <= 0.0 || price <= 0.0) {
                                 onUserMessage("请输入有效的买入确认日、份额和净值。")
                                 return@Button
                             }
@@ -275,7 +311,26 @@ fun TradesTabContent(
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("卖出", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("当前可卖出份额：${String.format(Locale.US, "%.2f", remaining)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedTextField(sellConfirmDate, { sellConfirmDate = it }, label = { Text("卖出确认日（YYYY-MM-DD）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    OutlinedTextField(
+                        value = sellConfirmDate,
+                        onValueChange = {},
+                        label = { Text("卖出确认日（YYYY-MM-DD）") },
+                        readOnly = true,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(
+                        onClick = {
+                            showDatePicker(
+                                currentValue = sellConfirmDate,
+                                onPick = { sellConfirmDate = it },
+                                createDialog = { y, m, d, onDateSet ->
+                                    DatePickerDialog(context, { _, yy, mm, dd -> onDateSet(yy, mm, dd) }, y, m, d)
+                                },
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("选择卖出日期") }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected = sellMode == "fifo", onClick = { sellMode = "fifo" }, label = { Text("FIFO 自动") })
                         FilterChip(selected = sellMode == "lots", onClick = { sellMode = "lots" }, label = { Text("指定批次") })
@@ -351,7 +406,7 @@ fun TradesTabContent(
                                     val price =
                                         if (sellEntryMode == "price") (sellPrice.toDoubleOrNull() ?: 0.0)
                                         else (sellAmount.toDoubleOrNull() ?: 0.0) / maxOf(1e-9, sh)
-                                    if (sellConfirmDate.isBlank() || sh <= 0.0 || price <= 0.0) {
+                                    if (!isIsoDate(sellConfirmDate) || sh <= 0.0 || price <= 0.0) {
                                         onUserMessage("请输入有效的卖出确认日、份额和净值。")
                                         return@launch
                                     }
@@ -387,7 +442,7 @@ fun TradesTabContent(
                                     val price =
                                         if (sellEntryMode == "price") (sellPrice.toDoubleOrNull() ?: 0.0)
                                         else (sellAmount.toDoubleOrNull() ?: 0.0) / maxOf(1e-9, totalSh)
-                                    if (sellConfirmDate.isBlank() || totalSh <= 0.0 || price <= 0.0) {
+                                    if (!isIsoDate(sellConfirmDate) || totalSh <= 0.0 || price <= 0.0) {
                                         onUserMessage("请选择有效批次，并输入有效净值/金额。")
                                         return@launch
                                     }
@@ -523,10 +578,28 @@ fun TradesTabContent(
                         }
                         p?.let {
                             TradesNavChartCanvas(navPoints = it.navPoints, buyPoints = it.buyPoints, sellPoints = it.sellPoints)
+                            if (it.navPoints.isEmpty()) {
+                                Text("暂无可绘制净值数据。请先刷新，或检查该基金是否已拉取历史净值。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                             if (it.calendarGaps.isNotEmpty()) {
                                 Text("当前范围内有 ${it.calendarGaps.size} 处相邻记录间隔超过14天。", color = MaterialTheme.colorScheme.error)
                             }
-                        }
+                        } ?: Text("正在加载曲线数据…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
+        if (!showAdvanced) {
+            item {
+                Card(Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("净值曲线", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        p?.let {
+                            TradesNavChartCanvas(navPoints = it.navPoints, buyPoints = it.buyPoints, sellPoints = it.sellPoints)
+                            if (it.navPoints.isEmpty()) {
+                                Text("暂无可绘制净值数据。请先刷新，或检查该基金是否已拉取历史净值。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        } ?: Text("正在加载曲线数据…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }

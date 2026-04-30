@@ -104,3 +104,30 @@ def test_trades_rpc_add_sell_by_lots_rejects_invalid_picks(tmp_path: Path, monke
     )
     assert bad["ok"] is False
     assert "无效" in bad["error"]
+
+
+def test_trades_rpc_add_buy_rejects_invalid_date(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("DATA_DIR", str(tmp_path))
+    bridge = _import_bridge()
+    from fundshare.service import PortfolioService
+    from fundshare.storage import JsonStorage
+
+    svc = PortfolioService(JsonStorage())
+    fund = svc.add_fund("000004", "日期校验测试", 1.0, "2026-01-01")
+    fund_id = int(fund["id"])
+
+    bad = json.loads(
+        bridge.trades_rpc(
+            "add_buy",
+            json.dumps(
+                {
+                    "fund_id": fund_id,
+                    "confirm_date": "2026/01/02",
+                    "price": 1.2,
+                    "shares": 100,
+                    "fee": 0.1,
+                }
+            ),
+        )
+    )
+    assert bad["ok"] is False
