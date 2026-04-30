@@ -56,7 +56,10 @@ function Fix-EmulatorNetworkFromHost {
     Write-Host "修正模拟器 DNS / 键盘相关系统设置 …" -ForegroundColor Cyan
     Invoke-Adb shell settings put global private_dns_mode 1 | Out-Null
     Invoke-Adb shell settings delete global private_dns_specifier 2>$null | Out-Null
-    Invoke-Adb shell settings put secure show_ime_with_hard_keyboard 0 | Out-Null
+    Invoke-Adb root 2>$null | Out-Null
+    Invoke-Adb shell ip route add default via 10.0.2.2 dev eth0 2>$null | Out-Null
+    # 1=连实体键盘时仍允许软键盘，避免输入法不弹出
+    Invoke-Adb shell settings put secure show_ime_with_hard_keyboard 1 | Out-Null
 }
 
 function Ensure-Emulator {
@@ -81,6 +84,7 @@ function Ensure-Emulator {
     Write-Host "后台启动 AVD FundShare_API34 …" -ForegroundColor Cyan
     $emuArgs = @(
         "-avd", "FundShare_API34",
+        "-no-snapshot-load",
         "-netdelay", "none",
         "-netspeed", "full",
         "-dns-server", "8.8.8.8,8.8.4.4"

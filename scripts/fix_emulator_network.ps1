@@ -14,7 +14,8 @@ if (-not (Test-Path $adb)) {
     Write-Error "未找到 adb: $adb"
 }
 $dev = & $adb devices
-if ($dev -notmatch "`tdevice$") {
+$online = $dev | Where-Object { $_ -match "\sdevice$" -and $_ -notmatch "^List of devices" }
+if (-not $online) {
     Write-Host "未检测到已连接设备。请先启动模拟器或连接真机，再重试。" -ForegroundColor Red
     exit 1
 }
@@ -28,9 +29,13 @@ Write-Host "==> 关闭 Private DNS（避免模拟器内 DNS 全失败）" -Foreg
 Sh "settings put global private_dns_mode 1" | Out-Null
 Sh "settings delete global private_dns_specifier" 2>$null | Out-Null
 
-Write-Host "==> 连接实体键盘时减少软键盘抢焦点（改善小键盘/数字键）" -ForegroundColor Cyan
-# 0 = 有硬键盘时不自动弹软键盘
-Sh "settings put secure show_ime_with_hard_keyboard 0" | Out-Null
+Write-Host "==> 尝试补默认路由（某些快照恢复后会丢 default route）" -ForegroundColor Cyan
+& $adb root 2>$null | Out-Null
+Sh "ip route add default via 10.0.2.2 dev eth0" 2>$null | Out-Null
+
+Write-Host "==> 连接实体键盘时允许弹出软键盘（避免输入法不出现）" -ForegroundColor Cyan
+# 1 = 有硬键盘时也显示软键盘
+Sh "settings put secure show_ime_with_hard_keyboard 1" | Out-Null
 
 Write-Host "==> 自检：ping 公网 IP 与域名（Android ping 参数因版本而异，失败可忽略）" -ForegroundColor Cyan
 Sh "ping -c 1 8.8.8.8" 2>&1

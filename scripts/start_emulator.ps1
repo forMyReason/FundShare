@@ -32,6 +32,7 @@ $avd = "FundShare_API34"
 # -dns-server：部分环境下模拟器默认 DNS 解析失败会导致东方财富等接口「无法联网」
 $argList = @(
     "-avd", $avd,
+    "-no-snapshot-load",
     "-netdelay", "none",
     "-netspeed", "full",
     "-dns-server", "8.8.8.8,8.8.4.4"
