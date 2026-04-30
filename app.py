@@ -548,7 +548,6 @@ def render_trades_and_chart() -> None:
         st.markdown("**分析口径**")
         st.caption("仅按确认日（与支付宝买入基金确认日一致）")
         date_field = "confirm_date"
-        analysis_basis = "按确认日"
         options = {_format_fund_label(f): f["id"] for f in funds}
         selected_label = st.selectbox(
             "当前基金",

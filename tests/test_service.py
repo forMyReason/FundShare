@@ -142,6 +142,32 @@ def test_buy_lot_rows_fifo_matches_lots(service: PortfolioService) -> None:
     assert rows[1]["remaining_shares"] == 150.0
 
 
+def test_nav_chart_date_window_presets() -> None:
+    assert PortfolioService.nav_chart_date_window([], "近1年") == (None, None)
+    pts = [{"date": "2026-06-15", "nav": 1.0}, {"date": "2026-01-01", "nav": 1.0}]
+    start, end = PortfolioService.nav_chart_date_window(pts, "近1月")
+    assert end == "2026-06-15"
+    assert start == "2026-05-16"
+    unknown = PortfolioService.nav_chart_date_window(pts, "未知")
+    assert unknown == (None, None)
+
+
+def test_nav_point_calendar_gaps_long_interval() -> None:
+    pts = [
+        {"date": "2026-01-01", "nav": 1.0},
+        {"date": "2026-02-20", "nav": 1.1},
+    ]
+    gaps = PortfolioService.nav_point_calendar_gaps(pts, min_gap_days=14)
+    assert len(gaps) == 1
+    assert gaps[0][0] == "2026-01-01"
+    assert gaps[0][1] == "2026-02-20"
+    assert gaps[0][2] == 50
+
+
+def test_nav_point_calendar_gaps_single_point_empty() -> None:
+    assert PortfolioService.nav_point_calendar_gaps([{"date": "2026-01-01", "nav": 1.0}], min_gap_days=14) == []
+
+
 def test_buy_lot_rows_with_allocations(service: PortfolioService) -> None:
     fund = service.add_fund("400102", "批次行指定抵扣", 1.0, "2026-01-01")
     b1 = service.add_buy(fund["id"], "2026-01-02", "2026-01-03", 1.0, 100)
