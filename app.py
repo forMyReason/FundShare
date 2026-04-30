@@ -13,6 +13,7 @@ import streamlit as st
 from fundshare import __version__
 from fundshare.errors import DomainError
 from fundshare.service import PortfolioService
+from fundshare.ui_captions import show_nav_interval_no_buy_points_caption
 
 
 st.set_page_config(page_title="个人基金交易记录器", layout="wide", initial_sidebar_state="expanded")
@@ -1117,7 +1118,7 @@ def render_trades_and_chart() -> None:
                     hovertemplate="日期=%{x}<br>卖出净值=%{y:.4f}<br>%{text}<extra></extra>",
                 )
             )
-        else:
+        if show_nav_interval_no_buy_points_caption(buy_points):
             st.caption("当前区间内无买入点。")
         fig.update_layout(
             title="",
