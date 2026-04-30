@@ -8,3 +8,4 @@ data/backups/
 .cursor/
 .coverage
 coverage.xml
+dist/

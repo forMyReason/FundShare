@@ -1,3 +1,5 @@
+import org.gradle.api.file.DuplicatesStrategy
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -57,6 +59,8 @@ android {
 chaquopy {
     defaultConfig {
         version = "3.12"
+        // Windows: py -3.12；构建机需已安装对应 Python（Chaquopy 文档要求）
+        buildPython("py", "-3.12")
         pip {
             install("requests")
         }
@@ -66,11 +70,18 @@ chaquopy {
 tasks.register<Copy>("syncFundsharePython") {
     from(layout.projectDirectory.dir("../../fundshare"))
     into(layout.projectDirectory.dir("src/main/python/fundshare"))
-    duplicatesStrategy = DuplicatesStrategy.OVERWRITE
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
 }
 
 tasks.named("preBuild") {
     dependsOn("syncFundsharePython")
+}
+
+// Gradle 8：Chaquopy 的 merge*PythonSources 与 sync 写同一目录，需显式依赖
+afterEvaluate {
+    listOf("mergeDebugPythonSources", "mergeReleasePythonSources").forEach { taskName ->
+        tasks.findByName(taskName)?.dependsOn("syncFundsharePython")
+    }
 }
 
 dependencies {
