@@ -2,15 +2,16 @@ package com.fundshare.app.ui
 
 import android.app.DatePickerDialog
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -22,7 +23,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,6 +59,35 @@ private fun showDatePicker(
     { year, month, day ->
         onPick(LocalDate.of(year, month + 1, day).toString())
     }.show()
+}
+
+@Composable
+private fun DateFieldWithPicker(
+    label: String,
+    value: String,
+    onPick: (String) -> Unit,
+    context: android.content.Context,
+    modifier: Modifier = Modifier,
+) {
+    val openPicker = {
+        showDatePicker(
+            currentValue = value,
+            onPick = onPick,
+            createDialog = { y, m, d, onDateSet ->
+                DatePickerDialog(context, { _, yy, mm, dd -> onDateSet(yy, mm, dd) }, y, m, d)
+            },
+        )
+    }
+    Box(modifier = modifier.clickable { openPicker() }) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {},
+            label = { Text(label) },
+            readOnly = true,
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
 }
 
 private fun pnlColor(v: Double): Color =
@@ -104,7 +133,8 @@ fun TradesTabContent(
     var txEnd by remember { mutableStateOf(LocalDate.now().toString()) }
     var txType by remember { mutableStateOf("all") }
     var chartRange by remember { mutableStateOf("近1年") }
-    var showAdvanced by remember { mutableStateOf(false) }
+    var showRelativeNav by remember { mutableStateOf(false) }
+    var showSellPointsInChart by remember { mutableStateOf(true) }
     var payload by remember { mutableStateOf<TradesPayload?>(null) }
     var loading by remember { mutableStateOf(false) }
 
@@ -123,10 +153,6 @@ fun TradesTabContent(
     var sellAmount by remember { mutableStateOf("100") }
     var sellFee by remember { mutableStateOf("0") }
     var sellRiskConfirmed by remember { mutableStateOf(false) }
-
-    var importJsonText by remember { mutableStateOf("") }
-    var importCsvText by remember { mutableStateOf("") }
-    var exportedCsv by remember { mutableStateOf("") }
 
     val selectedLotChecks = remember { mutableStateMapOf<Int, Boolean>() }
     val selectedLotShares = remember { mutableStateMapOf<Int, String>() }
@@ -198,12 +224,7 @@ fun TradesTabContent(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { reload() }, modifier = Modifier.weight(1f)) { Text("刷新") }
-                        FilterChip(
-                            selected = showAdvanced,
-                            onClick = { showAdvanced = !showAdvanced },
-                            label = { Text(if (showAdvanced) "收起扩展功能" else "展开扩展功能") },
-                        )
+                        Button(onClick = { reload() }, modifier = Modifier.fillMaxWidth()) { Text("刷新") }
                     }
                 }
             }
@@ -235,29 +256,46 @@ fun TradesTabContent(
             Card(Modifier.fillMaxWidth()) {
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("买入", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(
+                    DateFieldWithPicker(
+                        label = "买入确认日（YYYY-MM-DD）",
                         value = buyConfirmDate,
-                        onValueChange = {},
-                        label = { Text("买入确认日（YYYY-MM-DD）") },
-                        readOnly = true,
-                        singleLine = true,
+                        onPick = { buyConfirmDate = it },
+                        context = context,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Button(
-                        onClick = {
-                            showDatePicker(
-                                currentValue = buyConfirmDate,
-                                onPick = { buyConfirmDate = it },
-                                createDialog = { y, m, d, onDateSet ->
-                                    DatePickerDialog(context, { _, yy, mm, dd -> onDateSet(yy, mm, dd) }, y, m, d)
-                                },
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("选择买入日期") }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = buyMode == "price", onClick = { buyMode = "price" }, label = { Text("按净值+份额") })
-                        FilterChip(selected = buyMode == "amount", onClick = { buyMode = "amount" }, label = { Text("按金额+份额") })
+                        Button(
+                            onClick = { buyMode = "price" },
+                            colors =
+                                if (buyMode == "price") {
+                                    ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                } else {
+                                    ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("按净值+份额") }
+                        Button(
+                            onClick = { buyMode = "amount" },
+                            colors =
+                                if (buyMode == "amount") {
+                                    ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.primary,
+                                        contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    )
+                                } else {
+                                    ButtonDefaults.buttonColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                },
+                            modifier = Modifier.weight(1f),
+                        ) { Text("按金额+份额") }
                     }
                     if (buyMode == "price") {
                         OutlinedTextField(buyPrice, { buyPrice = it }, label = { Text("买入确认净值") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -311,26 +349,13 @@ fun TradesTabContent(
                 Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("卖出", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("当前可卖出份额：${String.format(Locale.US, "%.2f", remaining)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    OutlinedTextField(
+                    DateFieldWithPicker(
+                        label = "卖出确认日（YYYY-MM-DD）",
                         value = sellConfirmDate,
-                        onValueChange = {},
-                        label = { Text("卖出确认日（YYYY-MM-DD）") },
-                        readOnly = true,
-                        singleLine = true,
+                        onPick = { sellConfirmDate = it },
+                        context = context,
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Button(
-                        onClick = {
-                            showDatePicker(
-                                currentValue = sellConfirmDate,
-                                onPick = { sellConfirmDate = it },
-                                createDialog = { y, m, d, onDateSet ->
-                                    DatePickerDialog(context, { _, yy, mm, dd -> onDateSet(yy, mm, dd) }, y, m, d)
-                                },
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text("选择卖出日期") }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(selected = sellMode == "fifo", onClick = { sellMode = "fifo" }, label = { Text("FIFO 自动") })
                         FilterChip(selected = sellMode == "lots", onClick = { sellMode = "lots" }, label = { Text("指定批次") })
@@ -476,133 +501,104 @@ fun TradesTabContent(
             }
         }
 
-        if (showAdvanced) {
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("筛选与交易表", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedTextField(txStart, { txStart = it }, label = { Text("开始日期") }, singleLine = true, modifier = Modifier.weight(1f))
-                            OutlinedTextField(txEnd, { txEnd = it }, label = { Text("结束日期") }, singleLine = true, modifier = Modifier.weight(1f))
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FilterChip(selected = txType == "all", onClick = { txType = "all" }, label = { Text("全部") })
-                            FilterChip(selected = txType == "buy", onClick = { txType = "buy" }, label = { Text("仅买入") })
-                            FilterChip(selected = txType == "sell", onClick = { txType = "sell" }, label = { Text("仅卖出") })
-                            TextButton(onClick = { reload() }) { Text("应用筛选") }
-                        }
-                        p?.warning?.takeIf { it.isNotBlank() }?.let {
-                            Text(it, color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                }
-            }
-
-            if (!p?.transactions.isNullOrEmpty()) {
-                items(p!!.transactions) { t ->
-                    Card(Modifier.fillMaxWidth()) {
-                        Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(Modifier.weight(1f)) {
-                                Text("${if (t.txType == "buy") "买入" else "卖出"} · ${t.confirmDate}", fontWeight = FontWeight.Medium)
-                                Text("价 ${fmt4(t.price)} 份额 ${fmt4(t.shares)} 金额 ${fmtMoney(t.amount)} 手续费 ${fmtMoney(t.fee)}")
-                            }
-                        }
-                    }
-                }
-            } else {
-                item { Text("当前筛选条件下暂无交易记录。") }
-            }
-
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("批量导入（JSON / CSV）", fontWeight = FontWeight.SemiBold)
-                        OutlinedTextField(importJsonText, { importJsonText = it }, label = { Text("粘贴 JSON") }, modifier = Modifier.fillMaxWidth().height(120.dp))
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    val r = tradesRpc("import_json", jsonArgs(mapOf("json_text" to importJsonText)))
-                                    onUserMessage(if (r.ok) r.message else r.error)
-                                    if (r.ok) reload()
-                                }
-                            },
-                        ) { Text("执行 JSON 导入") }
-                        OutlinedTextField(importCsvText, { importCsvText = it }, label = { Text("粘贴 CSV") }, modifier = Modifier.fillMaxWidth().height(120.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("净值曲线", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "净值曲线说明与数据区间",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("近3月", "近6月", "近1年", "近3年", "近5年", "全部").forEach { r ->
+                            FilterChip(
+                                selected = chartRange == r,
                                 onClick = {
-                                    val code = p?.selectedFund?.code ?: ""
-                                    scope.launch {
-                                        val r = tradesRpc("import_csv", jsonArgs(mapOf("csv_text" to importCsvText, "fund_code" to code)))
-                                        onUserMessage(if (r.ok) r.message else r.error)
-                                        if (r.ok) reload()
-                                    }
+                                    chartRange = r
+                                    reload()
                                 },
-                            ) { Text("执行 CSV 导入") }
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        val r = tradesRpc("export_csv", jsonArgs(mapOf("fund_id" to selectedFundId)))
-                                        if (r.ok) {
-                                            exportedCsv = r.dataJson?.optString("csv_text", "") ?: ""
-                                            onUserMessage("导出成功，已显示在下方文本框。")
-                                        } else {
-                                            onUserMessage(r.error)
-                                        }
-                                    }
-                                },
-                            ) { Text("导出 CSV") }
-                        }
-                        if (exportedCsv.isNotBlank()) {
-                            OutlinedTextField(exportedCsv, { exportedCsv = it }, label = { Text("CSV 导出结果") }, modifier = Modifier.fillMaxWidth().height(120.dp))
+                                label = { Text(r) },
+                            )
                         }
                     }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = showRelativeNav, onCheckedChange = { showRelativeNav = it })
+                        Text("显示相对净值点涨跌(右轴, %)")
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = showSellPointsInChart, onCheckedChange = { showSellPointsInChart = it })
+                        Text("显示卖出点")
+                    }
+                    p?.let {
+                        TradesNavChartCanvas(
+                            navPoints = it.navPoints,
+                            buyPoints = it.buyPoints,
+                            sellPoints = it.sellPoints,
+                            showRelative = showRelativeNav,
+                            showSellPoints = showSellPointsInChart,
+                        )
+                        if (it.navPoints.isEmpty()) {
+                            Text("当前区间内暂无入点。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (it.calendarGaps.isNotEmpty()) {
+                            Text("当前范围内有 ${it.calendarGaps.size} 处相邻记录间隔超过14天。", color = MaterialTheme.colorScheme.error)
+                        }
+                    } ?: Text("正在加载曲线数据…", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+        }
 
-            item {
-                Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("净值曲线", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            listOf("近3月", "近6月", "近1年", "近3年", "近5年", "全部").forEach { r ->
-                                FilterChip(
-                                    selected = chartRange == r,
-                                    onClick = {
-                                        chartRange = r
-                                        reload()
-                                    },
-                                    label = { Text(r) },
-                                )
-                            }
+        item {
+            Card(Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("筛选与交易表", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            DateFieldWithPicker(
+                                label = "开始日期",
+                                value = txStart,
+                                onPick = { txStart = it },
+                                context = context,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
                         }
-                        p?.let {
-                            TradesNavChartCanvas(navPoints = it.navPoints, buyPoints = it.buyPoints, sellPoints = it.sellPoints)
-                            if (it.navPoints.isEmpty()) {
-                                Text("暂无可绘制净值数据。请先刷新，或检查该基金是否已拉取历史净值。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            if (it.calendarGaps.isNotEmpty()) {
-                                Text("当前范围内有 ${it.calendarGaps.size} 处相邻记录间隔超过14天。", color = MaterialTheme.colorScheme.error)
-                            }
-                        } ?: Text("正在加载曲线数据…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            DateFieldWithPicker(
+                                label = "结束日期",
+                                value = txEnd,
+                                onPick = { txEnd = it },
+                                context = context,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        FilterChip(selected = txType == "all", onClick = { txType = "all" }, label = { Text("全部") })
+                        FilterChip(selected = txType == "buy", onClick = { txType = "buy" }, label = { Text("仅买入") })
+                        FilterChip(selected = txType == "sell", onClick = { txType = "sell" }, label = { Text("仅卖出") })
+                        Button(onClick = { reload() }) { Text("应用筛选") }
+                    }
+                    p?.warning?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error)
                     }
                 }
             }
         }
-        if (!showAdvanced) {
-            item {
+
+        if (!p?.transactions.isNullOrEmpty()) {
+            items(p!!.transactions) { t ->
                 Card(Modifier.fillMaxWidth()) {
-                    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("净值曲线", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        p?.let {
-                            TradesNavChartCanvas(navPoints = it.navPoints, buyPoints = it.buyPoints, sellPoints = it.sellPoints)
-                            if (it.navPoints.isEmpty()) {
-                                Text("暂无可绘制净值数据。请先刷新，或检查该基金是否已拉取历史净值。", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        } ?: Text("正在加载曲线数据…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.padding(10.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(Modifier.weight(1f)) {
+                            Text("${if (t.txType == "buy") "买入" else "卖出"} · ${t.confirmDate}", fontWeight = FontWeight.Medium)
+                            Text("价 ${fmt4(t.price)} 份额 ${fmt4(t.shares)} 金额 ${fmtMoney(t.amount)} 手续费 ${fmtMoney(t.fee)}")
+                        }
                     }
                 }
             }
+        } else {
+            item { Text("当前筛选条件下暂无交易记录。") }
         }
     }
 }

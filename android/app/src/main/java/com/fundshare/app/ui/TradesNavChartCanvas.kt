@@ -3,7 +3,9 @@ package com.fundshare.app.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -25,12 +27,15 @@ import java.time.temporal.ChronoUnit
 import kotlin.math.abs
 
 private data class ChartPt(val x: Float, val y: Float, val date: String, val nav: Double)
+private data class RelativePt(val x: Float, val y: Float, val date: String, val ratio: Double)
 
 @Composable
 fun TradesNavChartCanvas(
     navPoints: List<NavPointUi>,
     buyPoints: List<BuyPointUi>,
     sellPoints: List<SellPointUi>,
+    showRelative: Boolean,
+    showSellPoints: Boolean,
     modifier: Modifier = Modifier,
 ) {
     if (navPoints.isEmpty()) {
@@ -55,6 +60,17 @@ fun TradesNavChartCanvas(
     val minNav = parsed.minOf { it.second }
     val maxNav = parsed.maxOf { it.second }
     val navSpan = if (maxNav - minNav < 1e-9) 1.0 else (maxNav - minNav)
+    val baseNav = parsed.first().second
+
+    val relativeParsed =
+        if (baseNav <= 1e-9) {
+            emptyList()
+        } else {
+            parsed.map { (d, v) -> d to ((v / baseNav - 1.0) * 100.0) }
+        }
+    val minRelative = relativeParsed.minOfOrNull { it.second } ?: -1.0
+    val maxRelative = relativeParsed.maxOfOrNull { it.second } ?: 1.0
+    val relativeSpan = if (maxRelative - minRelative < 1e-9) 1.0 else (maxRelative - minRelative)
 
     Column(modifier = modifier) {
         Canvas(
@@ -92,6 +108,26 @@ fun TradesNavChartCanvas(
             }
             drawPath(path, color = Color(0xFF1F77B4))
 
+            val relativePts =
+                if (!showRelative || relativeParsed.isEmpty()) {
+                    emptyList()
+                } else {
+                    relativeParsed.map { (d, ratio) ->
+                        val dx = ChronoUnit.DAYS.between(minDate, d).toFloat() / spanDays.toFloat()
+                        val x = size.width * dx
+                        val dy = ((ratio - minRelative) / relativeSpan).toFloat()
+                        val y = size.height * (1f - dy)
+                        RelativePt(x, y, d.toString(), ratio)
+                    }
+                }
+            if (relativePts.isNotEmpty()) {
+                val relativePath = Path()
+                relativePts.forEachIndexed { idx, p ->
+                    if (idx == 0) relativePath.moveTo(p.x, p.y) else relativePath.lineTo(p.x, p.y)
+                }
+                drawPath(relativePath, color = Color(0xFFEF6C00))
+            }
+
             buyPoints.forEach { b ->
                 val d = runCatching { LocalDate.parse(b.date) }.getOrNull() ?: return@forEach
                 val dx = ChronoUnit.DAYS.between(minDate, d).toFloat() / spanDays.toFloat()
@@ -100,13 +136,15 @@ fun TradesNavChartCanvas(
                 val y = size.height * (1f - dy)
                 drawCircle(color = Color(0xFF2E7D32), radius = 5f, center = Offset(x, y))
             }
-            sellPoints.forEach { s ->
-                val d = runCatching { LocalDate.parse(s.date) }.getOrNull() ?: return@forEach
-                val dx = ChronoUnit.DAYS.between(minDate, d).toFloat() / spanDays.toFloat()
-                val x = size.width * dx
-                val dy = ((s.price - minNav) / navSpan).toFloat()
-                val y = size.height * (1f - dy)
-                drawCircle(color = Color(0xFFC62828), radius = 5f, center = Offset(x, y))
+            if (showSellPoints) {
+                sellPoints.forEach { s ->
+                    val d = runCatching { LocalDate.parse(s.date) }.getOrNull() ?: return@forEach
+                    val dx = ChronoUnit.DAYS.between(minDate, d).toFloat() / spanDays.toFloat()
+                    val x = size.width * dx
+                    val dy = ((s.price - minNav) / navSpan).toFloat()
+                    val y = size.height * (1f - dy)
+                    drawCircle(color = Color(0xFFC62828), radius = 5f, center = Offset(x, y))
+                }
             }
             selected?.let { p ->
                 drawLine(
@@ -123,6 +161,19 @@ fun TradesNavChartCanvas(
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 6.dp),
             )
+        }
+        Row(
+            modifier = Modifier.padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("蓝线: 净值", style = MaterialTheme.typography.labelSmall, color = Color(0xFF1F77B4))
+            if (showRelative) {
+                Text("橙线: 相对涨跌(%)", style = MaterialTheme.typography.labelSmall, color = Color(0xFFEF6C00))
+            }
+            Text("绿点: 买入点", style = MaterialTheme.typography.labelSmall, color = Color(0xFF2E7D32))
+            if (showSellPoints) {
+                Text("红点: 卖出点", style = MaterialTheme.typography.labelSmall, color = Color(0xFFC62828))
+            }
         }
     }
 }
