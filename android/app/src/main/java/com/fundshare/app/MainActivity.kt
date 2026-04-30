@@ -26,9 +26,9 @@ import kotlinx.coroutines.withContext
 
 private val StreamlitLikeLight =
     lightColorScheme(
-        primary = Color(0xFFFF4B4B),
+        primary = Color(0xFF0037DC),
         onPrimary = Color.White,
-        primaryContainer = Color(0xFFFFE8E8),
+        primaryContainer = Color(0xFFE6EEFF),
         secondary = Color(0xFF1F77B4),
         surface = Color(0xFFFFFBFE),
         background = Color(0xFFF8F9FA),

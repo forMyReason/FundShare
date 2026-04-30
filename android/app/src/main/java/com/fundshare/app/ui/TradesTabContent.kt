@@ -12,13 +12,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -46,6 +47,10 @@ import java.util.Locale
 private fun fmtMoney(v: Double): String = String.format(Locale.US, "%.2f", v)
 
 private fun fmt4(v: Double): String = String.format(Locale.US, "%.4f", v)
+private val ModeSelectedBg = Color(0xFFE9D5FF)
+private val ModeSelectedText = Color(0xFF5B21B6)
+private val ModeUnselectedBg = Color(0xFFF3F4F6)
+private val ModeUnselectedText = Color(0xFF374151)
 
 private fun isIsoDate(v: String): Boolean = runCatching { LocalDate.parse(v); true }.getOrDefault(false)
 
@@ -78,7 +83,12 @@ private fun DateFieldWithPicker(
             },
         )
     }
-    Box(modifier = modifier.clickable { openPicker() }) {
+    Box(
+        modifier =
+            modifier.pointerInput(value) {
+                detectTapGestures(onTap = { openPicker() })
+            },
+    ) {
         OutlinedTextField(
             value = value,
             onValueChange = {},
@@ -88,6 +98,38 @@ private fun DateFieldWithPicker(
             modifier = Modifier.fillMaxWidth(),
         )
     }
+}
+
+@Composable
+private fun ModeToggleButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        colors =
+            if (selected) {
+                ButtonDefaults.buttonColors(containerColor = ModeSelectedBg, contentColor = ModeSelectedText)
+            } else {
+                ButtonDefaults.buttonColors(containerColor = ModeUnselectedBg, contentColor = ModeUnselectedText)
+            },
+    ) { Text(text) }
+}
+
+@Composable
+private fun SoftActionButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier,
+        colors = ButtonDefaults.buttonColors(containerColor = ModeSelectedBg, contentColor = ModeSelectedText),
+    ) { Text(text) }
 }
 
 private fun pnlColor(v: Double): Color =
@@ -216,15 +258,15 @@ fun TradesTabContent(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         funds.forEach { f ->
-                            FilterChip(
+                            ModeToggleButton(
+                                text = "${f.code} ${f.name.take(4)}",
                                 selected = selectedFundId == f.id,
                                 onClick = { selectedFundId = f.id },
-                                label = { Text("${f.code} ${f.name.take(4)}") },
                             )
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { reload() }, modifier = Modifier.fillMaxWidth()) { Text("刷新") }
+                        SoftActionButton(text = "刷新", onClick = { reload() }, modifier = Modifier.fillMaxWidth())
                     }
                 }
             }
@@ -264,38 +306,8 @@ fun TradesTabContent(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { buyMode = "price" },
-                            colors =
-                                if (buyMode == "price") {
-                                    ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                                    )
-                                } else {
-                                    ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("按净值+份额") }
-                        Button(
-                            onClick = { buyMode = "amount" },
-                            colors =
-                                if (buyMode == "amount") {
-                                    ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.primary,
-                                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                                    )
-                                } else {
-                                    ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                },
-                            modifier = Modifier.weight(1f),
-                        ) { Text("按金额+份额") }
+                        ModeToggleButton("按净值+份额", buyMode == "price", { buyMode = "price" }, Modifier.weight(1f))
+                        ModeToggleButton("按金额+份额", buyMode == "amount", { buyMode = "amount" }, Modifier.weight(1f))
                     }
                     if (buyMode == "price") {
                         OutlinedTextField(buyPrice, { buyPrice = it }, label = { Text("买入确认净值") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -309,7 +321,8 @@ fun TradesTabContent(
                         Text("自动计算净值：${String.format(Locale.US, "%.6f", calc)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     OutlinedTextField(buyFee, { buyFee = it }, label = { Text("手续费（可选）") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                    Button(
+                    SoftActionButton(
+                        text = "记录买入",
                         onClick = {
                             val sh = buyShares.toDoubleOrNull() ?: 0.0
                             val fee = buyFee.toDoubleOrNull() ?: 0.0
@@ -318,7 +331,7 @@ fun TradesTabContent(
                                 else (buyAmount.toDoubleOrNull() ?: 0.0) / maxOf(1e-9, sh)
                             if (!isIsoDate(buyConfirmDate) || sh <= 0.0 || price <= 0.0) {
                                 onUserMessage("请输入有效的买入确认日、份额和净值。")
-                                return@Button
+                                return@SoftActionButton
                             }
                             scope.launch {
                                 val r =
@@ -339,7 +352,7 @@ fun TradesTabContent(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("记录买入") }
+                    )
                 }
             }
         }
@@ -357,12 +370,12 @@ fun TradesTabContent(
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = sellMode == "fifo", onClick = { sellMode = "fifo" }, label = { Text("FIFO 自动") })
-                        FilterChip(selected = sellMode == "lots", onClick = { sellMode = "lots" }, label = { Text("指定批次") })
+                        ModeToggleButton("FIFO 自动", sellMode == "fifo", { sellMode = "fifo" }, Modifier.weight(1f))
+                        ModeToggleButton("指定批次", sellMode == "lots", { sellMode = "lots" }, Modifier.weight(1f))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(selected = sellEntryMode == "price", onClick = { sellEntryMode = "price" }, label = { Text("按净值+份额") })
-                        FilterChip(selected = sellEntryMode == "amount", onClick = { sellEntryMode = "amount" }, label = { Text("按金额+份额") })
+                        ModeToggleButton("按净值+份额", sellEntryMode == "price", { sellEntryMode = "price" }, Modifier.weight(1f))
+                        ModeToggleButton("按金额+份额", sellEntryMode == "amount", { sellEntryMode = "amount" }, Modifier.weight(1f))
                     }
                     if (sellMode == "fifo") {
                         OutlinedTextField(sellShares, { sellShares = it }, label = { Text("卖出份额") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -418,11 +431,12 @@ fun TradesTabContent(
                             Text("我已核对份额与价格，确认提交本次卖出")
                         }
                     }
-                    Button(
+                    SoftActionButton(
+                        text = "记录卖出",
                         onClick = {
                             if (risk != "none" && !sellRiskConfirmed) {
                                 onUserMessage("请先勾选确认后再提交卖出。")
-                                return@Button
+                                return@SoftActionButton
                             }
                             val fee = sellFee.toDoubleOrNull() ?: 0.0
                             scope.launch {
@@ -495,8 +509,7 @@ fun TradesTabContent(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    ) { Text("记录卖出") }
+                    )
                 }
             }
         }
@@ -511,14 +524,14 @@ fun TradesTabContent(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("近3月", "近6月", "近1年", "近3年", "近5年", "全部").forEach { r ->
-                            FilterChip(
-                                selected = chartRange == r,
+                        listOf("近3月", "近6月", "近1年", "近3年", "近5年", "全部").forEach { option ->
+                            ModeToggleButton(
+                                text = option,
+                                selected = chartRange == option,
                                 onClick = {
-                                    chartRange = r
+                                    chartRange = option
                                     reload()
                                 },
-                                label = { Text(r) },
                             )
                         }
                     }
@@ -574,10 +587,10 @@ fun TradesTabContent(
                         }
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        FilterChip(selected = txType == "all", onClick = { txType = "all" }, label = { Text("全部") })
-                        FilterChip(selected = txType == "buy", onClick = { txType = "buy" }, label = { Text("仅买入") })
-                        FilterChip(selected = txType == "sell", onClick = { txType = "sell" }, label = { Text("仅卖出") })
-                        Button(onClick = { reload() }) { Text("应用筛选") }
+                        ModeToggleButton("全部", txType == "all", { txType = "all" })
+                        ModeToggleButton("仅买入", txType == "buy", { txType = "buy" })
+                        ModeToggleButton("仅卖出", txType == "sell", { txType = "sell" })
+                        SoftActionButton(text = "应用筛选", onClick = { reload() })
                     }
                     p?.warning?.takeIf { it.isNotBlank() }?.let {
                         Text(it, color = MaterialTheme.colorScheme.error)
