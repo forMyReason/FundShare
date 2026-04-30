@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">FundShare</string>
+    <string name="python_status_label">本地核心（Chaquopy + fundshare）预研</string>
+    <string name="python_refresh">重新检测</string>
+</resources>
