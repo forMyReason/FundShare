@@ -128,6 +128,41 @@ def test_trade_price_and_shares_must_be_positive(service: PortfolioService) -> N
         service.add_sell(fund["id"], "2026-04-02", "2026-04-03", 1.0, 0)
 
 
+def test_buy_lot_rows_fifo_matches_lots(service: PortfolioService) -> None:
+    fund = service.add_fund("400101", "批次行FIFO", 1.2, "2026-01-01")
+    service.add_buy(fund["id"], "2026-01-02", "2026-01-03", 1.0, 100)
+    service.add_buy(fund["id"], "2026-01-04", "2026-01-05", 1.1, 200)
+    service.add_sell(fund["id"], "2026-01-06", "2026-01-07", 1.2, 150)
+    txs = service.get_transactions(fund["id"])
+    rows = service.buy_lot_rows_from_transactions(txs)
+    assert len(rows) == 2
+    assert rows[0]["sold_shares"] == 100.0
+    assert rows[0]["remaining_shares"] == 0.0
+    assert rows[1]["sold_shares"] == 50.0
+    assert rows[1]["remaining_shares"] == 150.0
+
+
+def test_buy_lot_rows_with_allocations(service: PortfolioService) -> None:
+    fund = service.add_fund("400102", "批次行指定抵扣", 1.0, "2026-01-01")
+    b1 = service.add_buy(fund["id"], "2026-01-02", "2026-01-03", 1.0, 100)
+    b2 = service.add_buy(fund["id"], "2026-01-04", "2026-01-05", 1.1, 100)
+    service.add_sell_by_lots(
+        fund["id"],
+        "2026-01-06",
+        "2026-01-07",
+        1.15,
+        [{"buy_tx_id": int(b2["id"]), "shares": 40.0}],
+        0.0,
+    )
+    txs = service.get_transactions(fund["id"])
+    rows = service.buy_lot_rows_from_transactions(txs)
+    by_id = {int(r["buy_tx_id"]): r for r in rows}
+    assert by_id[int(b1["id"])]["remaining_shares"] == 100.0
+    assert by_id[int(b1["id"])]["sold_shares"] == 0.0
+    assert by_id[int(b2["id"])]["remaining_shares"] == 60.0
+    assert by_id[int(b2["id"])]["sold_shares"] == 40.0
+
+
 def test_default_store_path_respects_data_dir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     assert Path(default_store_path()) == tmp_path / "store.json"

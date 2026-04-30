@@ -146,50 +146,6 @@ def _left_align(df: pd.DataFrame) -> pd.io.formats.style.Styler:
     )
 
 
-def _buy_lot_status_from_transactions(txs: list[dict]) -> list[dict]:
-    buy_rows = [
-        {
-            "buy_tx_id": int(tx["id"]),
-            "date": tx["confirm_date"],
-            "price": float(tx["price"]),
-            "original_shares": float(tx["shares"]),
-            "sold_shares": 0.0,
-        }
-        for tx in txs
-        if tx["tx_type"] == "buy"
-    ]
-    buy_map = {int(r["buy_tx_id"]): r for r in buy_rows}
-    for tx in txs:
-        if tx["tx_type"] != "sell":
-            continue
-        allocs = tx.get("allocations") or []
-        if allocs:
-            for a in allocs:
-                try:
-                    bid = int(a["buy_tx_id"])
-                    sh = float(a["shares"])
-                except (KeyError, TypeError, ValueError):
-                    continue
-                if bid in buy_map:
-                    buy_map[bid]["sold_shares"] += sh
-        else:
-            # legacy sell without allocations: fallback FIFO simulation
-            remaining = float(tx["shares"])
-            for r in buy_rows:
-                can = float(r["original_shares"]) - float(r["sold_shares"])
-                if can <= 1e-9:
-                    continue
-                if remaining <= 1e-9:
-                    break
-                used = min(can, remaining)
-                r["sold_shares"] += used
-                remaining -= used
-    for r in buy_rows:
-        r["remaining_shares"] = max(0.0, float(r["original_shares"]) - float(r["sold_shares"]))
-    buy_rows.sort(key=lambda x: (x["date"], x["buy_tx_id"]))
-    return buy_rows
-
-
 def render_fund_management() -> None:
     st.subheader("当前持有基金总览")
     funds = service.list_funds()
@@ -268,7 +224,7 @@ def render_fund_management() -> None:
             k4.metric("持有收益率", f"{hold_ratio:.2f}%")
             k5.metric("累计盈亏", f"{cum_pnl:.2f}")
 
-            buy_lots = _buy_lot_status_from_transactions(txs)
+            buy_lots = service.buy_lot_rows_from_transactions(txs, date_field="confirm_date")
             if buy_lots:
                 lot_df = pd.DataFrame(buy_lots)
                 lot_df["remaining_cost"] = lot_df["remaining_shares"].astype(float) * lot_df["price"].astype(float)
@@ -357,7 +313,7 @@ def render_fund_management() -> None:
                             )
                     except Exception:  # noqa: BLE001
                         st.caption(f"{benchmark_pick} 对标获取失败，已忽略。")
-                buy_lots = _buy_lot_status_from_transactions(txs)
+                buy_lots = service.buy_lot_rows_from_transactions(txs, date_field="confirm_date")
                 if show_trade_markers and buy_lots:
                     buy_df = pd.DataFrame(buy_lots)
                     buy_text = (
@@ -601,6 +557,13 @@ def render_trades_and_chart() -> None:
         )
         fund_id = options[selected_label]
         selected_fund = next(f for f in funds if f["id"] == fund_id)
+        st.download_button(
+            "导出当前基金交易 CSV",
+            data=service.export_transactions_csv(fund_id, date_field=date_field).encode("utf-8-sig"),
+            file_name=f"fund_{selected_fund['code']}_transactions.csv",
+            mime="text/csv",
+            key=f"export_fund_tx_csv_{fund_id}",
+        )
 
     remaining_shares = service.get_remaining_shares(fund_id)
     summary = service.get_position_summary(fund_id, date_field=date_field)
@@ -951,7 +914,7 @@ def render_trades_and_chart() -> None:
         st.info("当前时间范围内没有净值数据，请选择「全部」或更长区间。")
         return
     tx_all = service.get_transactions(fund_id, date_field="confirm_date")
-    buy_lots_all = _buy_lot_status_from_transactions(tx_all)
+    buy_lots_all = service.buy_lot_rows_from_transactions(tx_all, date_field="confirm_date")
     buy_points_raw = [
         {
             "date": r["date"],
@@ -1155,6 +1118,13 @@ with tab1:
     o7.metric("已实现盈亏", f"{overview['realized_pnl']:.2f}")
     o8.metric("累计手续费", f"{overview['total_fees']:.2f}")
     st.caption(f"扣费后已实现盈亏：**{overview['realized_pnl_after_fees']:.2f}**")
+    st.download_button(
+        "导出持仓汇总 CSV",
+        data=service.export_portfolio_csv().encode("utf-8-sig"),
+        file_name="portfolio_holdings.csv",
+        mime="text/csv",
+        key="export_portfolio_csv_tab",
+    )
     st.divider()
     st.subheader("多基金持仓对比")
     all_summaries = service.get_all_position_summaries()

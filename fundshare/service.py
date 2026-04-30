@@ -336,11 +336,13 @@ class PortfolioService:
             raise DomainError("卖出份额超过当前持仓")
         return allocations
 
-    def _build_lot_states(self, data: dict[str, Any], fund_id: int, date_field: str = "confirm_date") -> list[dict[str, Any]]:
-        txs = [tx for tx in data["transactions"] if tx["fund_id"] == fund_id]
-        txs.sort(key=lambda x: (x[date_field], int(x["id"])))
+    @staticmethod
+    def _build_lot_states_from_tx_list(
+        txs: list[dict[str, Any]], date_field: str = "confirm_date"
+    ) -> list[dict[str, Any]]:
+        txs_sorted = sorted(txs, key=lambda x: (x[date_field], int(x["id"])))
         lots: list[dict[str, Any]] = []
-        for tx in txs:
+        for tx in txs_sorted:
             if tx["tx_type"] == "buy":
                 lots.append(
                     {
@@ -375,6 +377,33 @@ class PortfolioService:
                     lot["remaining_shares"] -= consumed
                     remaining_sell -= consumed
         return lots
+
+    def _build_lot_states(self, data: dict[str, Any], fund_id: int, date_field: str = "confirm_date") -> list[dict[str, Any]]:
+        txs = [tx for tx in data["transactions"] if tx["fund_id"] == fund_id]
+        return self._build_lot_states_from_tx_list(txs, date_field=date_field)
+
+    def buy_lot_rows_from_transactions(
+        self, txs: list[dict[str, Any]], date_field: str = "confirm_date"
+    ) -> list[dict[str, Any]]:
+        """买入批次明细（含已卖份额），供图表与持仓明细展示；与份额抵扣口径一致。"""
+        lots = self._build_lot_states_from_tx_list(list(txs), date_field=date_field)
+        rows: list[dict[str, Any]] = []
+        for lot in lots:
+            orig = float(lot["original_shares"])
+            rem = max(0.0, float(lot["remaining_shares"]))
+            sold = max(0.0, orig - rem)
+            rows.append(
+                {
+                    "buy_tx_id": int(lot["buy_id"]),
+                    "date": lot["date"],
+                    "price": float(lot["price"]),
+                    "original_shares": orig,
+                    "sold_shares": sold,
+                    "remaining_shares": rem,
+                }
+            )
+        rows.sort(key=lambda x: (str(x["date"]), x["buy_tx_id"]))
+        return rows
 
     def get_remaining_shares(self, fund_id: int) -> float:
         data = self._load()
