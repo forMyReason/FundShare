@@ -119,7 +119,9 @@ cmd /c "echo no | `"$sdk\cmdline-tools\latest\bin\avdmanager.bat`" create avd -n
 ## 运行
 
 - 用 USB 或模拟器运行 **app** 的 `debug` 变体；或直接安装上一步的 `FundShare-debug.apk`。
-- 首屏应显示 `DATA_DIR=...`、基金数量、组合总成本等；数据文件为应用私有目录下的 `store.json`（与桌面版 `JsonStorage` 相同逻辑）。
+- 主界面为 **类 Streamlit 四 Tab 布局**（组合总览 / 基金管理 / 交易与净值 / 维护），数据由 Chaquopy 调用与网页版相同的 `fundshare` 逻辑；**复杂图表、导入、买卖表单**仍建议在 Streamlit 网页端操作，移动端侧重阅览组合指标与持仓列表。
+
+数据文件为应用私有目录下的 `store.json`（与桌面版 `JsonStorage` 相同逻辑）。
 
 ## MIUI 14 提示
 
