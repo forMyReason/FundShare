@@ -48,10 +48,20 @@ cd android
 
 ### 方式 A：Android 模拟器（全在电脑里）
 
-1. 安装 **Android Studio**，打开本仓库的 **`android/`** 工程。  
-2. 菜单 **Tools → Device Manager**，**Create Device**，选一台手机型号，下载对应 **System Image**（建议 API 34），完成创建。  
-3. 在 Device Manager 里点 **运行** 三角按钮，启动模拟器窗口（这就是电脑上的「手机屏」）。  
-4. 在 Android Studio 里对 **app** 点 **Run**（绿色三角），选该模拟器；之后在模拟器窗口里即可实时看到界面并点击。
+本机已可启动名为 **`FundShare_API34`** 的虚拟设备（Pixel 6 外形、Android 14 / API 34、Google APIs x86_64）。在仓库根目录执行：
+
+```powershell
+.\scripts\start_emulator.ps1
+```
+
+会打开模拟器窗口；首次启动可能需 1～2 分钟。然后在 **Android Studio** 中打开 **`android/`** 工程，对 **app** 点 **Run**，选择 **FundShare_API34**，即可在电脑里看到 App 并点击。
+
+若你尚未创建该 AVD，可在 Android Studio 中 **Tools → Device Manager → Create Device** 自建；或使用与本仓库一致的命令（需已安装 `emulator` 与对应 system-image）：
+
+```powershell
+$sdk = "$env:LOCALAPPDATA\Android\Sdk"
+cmd /c "echo no | `"$sdk\cmdline-tools\latest\bin\avdmanager.bat`" create avd -n FundShare_API34 -k `"system-images;android-34;google_apis;x86_64`" -d pixel_6"
+```
 
 模拟器窗口支持键盘、鼠标滚轮与拖拽，与真机交互一致（部分传感器除外）。
 
