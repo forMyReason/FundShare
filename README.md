@@ -40,7 +40,7 @@ Python · Streamlit · Plotly · Pandas · Requests · pytest / pytest-cov
 
 ## Android 本地客户端（实验）
 
-分支 `feature/android-local` 使用 Chaquopy 在设备上嵌入 Python 并复用 `fundshare` 业务包（预研界面，功能未与网页完全对齐）。构建与 MIUI 说明见 [README_ANDROID.md](README_ANDROID.md)，对照表见 [ANDROID_PARITY.md](ANDROID_PARITY.md)。
+分支 `feature/android-local` 使用 Chaquopy 在设备上嵌入 Python 并复用 `fundshare` 业务包（预研界面，功能未与网页完全对齐）。构建与 MIUI 说明见 [README_ANDROID.md](README_ANDROID.md)，对照表见 [ANDROID_PARITY.md](ANDROID_PARITY.md)。在电脑上实时看界面、用鼠标点击：可用 **Android 模拟器** 或真机 **scrcpy** 投屏（文档内有步骤与 `scripts/scrcpy_preview.ps1`）。
 
 ## Run Locally
 

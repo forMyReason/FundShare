@@ -42,6 +42,39 @@ cd android
 
 可复制为 **`dist/FundShare-debug.apk`**（约 45MB，含 Chaquopy/Python 运行时），传到手机安装即可（需允许「安装未知来源」）。
 
+## 在电脑上实时看界面并点击
+
+开发时要在 **PC 上看到与手机一致的界面**，并 **用鼠标点击操作**，常用两种方式：
+
+### 方式 A：Android 模拟器（全在电脑里）
+
+1. 安装 **Android Studio**，打开本仓库的 **`android/`** 工程。  
+2. 菜单 **Tools → Device Manager**，**Create Device**，选一台手机型号，下载对应 **System Image**（建议 API 34），完成创建。  
+3. 在 Device Manager 里点 **运行** 三角按钮，启动模拟器窗口（这就是电脑上的「手机屏」）。  
+4. 在 Android Studio 里对 **app** 点 **Run**（绿色三角），选该模拟器；之后在模拟器窗口里即可实时看到界面并点击。
+
+模拟器窗口支持键盘、鼠标滚轮与拖拽，与真机交互一致（部分传感器除外）。
+
+### 方式 B：真机投屏（scrcpy，适合 MIUI 真机）
+
+真机用 USB 连电脑，手机上打开 **开发者选项 → USB 调试**（MIUI 可能还需打开 **USB 调试（安全设置）** 才能用电脑鼠标点按）。
+
+1. 安装投屏工具：`winget install Genymobile.scrcpy`  
+2. 确认已安装 **Android SDK platform-tools**（与构建 APK 时同一套 `ANDROID_HOME`）。  
+3. 在仓库根目录执行：
+
+```powershell
+.\scripts\scrcpy_preview.ps1
+```
+
+会弹出 **scrcpy** 窗口，显示手机当前画面；**鼠标点击、键盘输入**会传到手机。你在 Android Studio 里 **Run** 装到这台手机后，scrcpy 窗口会同步显示最新界面。
+
+可选：Android 11+ 可在开发者选项里 **无线调试** 配对后 `adb connect IP:端口`，再运行 `scrcpy`。
+
+### 方式 C：Android Studio Running Devices
+
+较新版本 Android Studio 在 **View → Tool Windows → Running Devices** 中可嵌入模拟器或部分机型的镜像；与方式 A/B 二选一即可。
+
 ## 运行
 
 - 用 USB 或模拟器运行 **app** 的 `debug` 变体；或直接安装上一步的 `FundShare-debug.apk`。
