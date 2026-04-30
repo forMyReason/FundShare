@@ -3,14 +3,15 @@ package com.fundshare.app
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 import com.chaquo.python.Python
 import com.fundshare.app.ui.FullPayload
@@ -37,7 +38,20 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = StreamlitLikeLight) {
                 var payload by remember { mutableStateOf<FullPayload?>(null) }
                 var loading by remember { mutableStateOf(true) }
+                val snackbarHostState = remember { SnackbarHostState() }
+
                 val scope = rememberCoroutineScope()
+
+                val maintenanceRpc: suspend (String, String) -> String = { op, argJson ->
+                    withContext(Dispatchers.Default) {
+                        if (!Python.isStarted()) {
+                            """{"ok":false,"error":"Python 未启动"}"""
+                        } else {
+                            val mod = Python.getInstance().getModule("fundshare_android.bridge")
+                            mod.callAttr("maintenance_rpc", op, argJson).toString()
+                        }
+                    }
+                }
 
                 fun load() {
                     scope.launch {
@@ -67,6 +81,8 @@ class MainActivity : ComponentActivity() {
                     payload = payload,
                     loading = loading,
                     onRefresh = { load() },
+                    snackbarHostState = snackbarHostState,
+                    maintenanceRpc = maintenanceRpc,
                 )
             }
         }

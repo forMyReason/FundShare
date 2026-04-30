@@ -27,16 +27,25 @@ data class PositionUi(
     val annualizedSimpleRatio: Double,
 )
 
-data class FundUi(val code: String, val name: String, val currentNav: Double)
+data class FundUi(
+    val id: Int,
+    val code: String,
+    val name: String,
+    val currentNav: Double,
+)
 
 data class TransactionUi(
+    val id: Int,
+    val fundId: Int,
     val fundCode: String,
     val fundName: String,
     val txType: String,
+    val applyDate: String,
     val confirmDate: String,
     val shares: Double,
     val amount: Double,
     val price: Double,
+    val fee: Double,
 )
 
 data class FullPayload(
@@ -57,7 +66,13 @@ private fun JSONObject.optDoubleSafe(key: String, default: Double = 0.0): Double
 
 fun parseFullPayload(json: String): FullPayload {
     val root = JSONObject(json)
-    val err = root.optString("error").takeIf { it.isNotBlank() }
+    val err: String? =
+        when {
+            !root.has("error") || root.isNull("error") -> null
+            else ->
+                root.optString("error", "")
+                    .takeIf { it.isNotBlank() && !it.equals("null", ignoreCase = true) }
+        }
 
     val overview: OverviewUi? = if (root.has("overview") && !root.isNull("overview")) {
         val o = root.getJSONObject("overview")
@@ -101,6 +116,7 @@ fun parseFullPayload(json: String): FullPayload {
         val f = fa.getJSONObject(i)
         funds.add(
             FundUi(
+                id = f.optInt("id", 0),
                 code = f.optString("code"),
                 name = f.optString("name"),
                 currentNav = f.optDoubleSafe("current_nav"),
@@ -114,13 +130,17 @@ fun parseFullPayload(json: String): FullPayload {
         val t = ta.getJSONObject(i)
         txs.add(
             TransactionUi(
+                id = t.optInt("id", 0),
+                fundId = t.optInt("fund_id", 0),
                 fundCode = t.optString("fund_code"),
                 fundName = t.optString("fund_name"),
                 txType = t.optString("tx_type"),
+                applyDate = t.optString("apply_date"),
                 confirmDate = t.optString("confirm_date"),
                 shares = t.optDoubleSafe("shares"),
                 amount = t.optDoubleSafe("amount"),
                 price = t.optDoubleSafe("price"),
+                fee = t.optDoubleSafe("fee"),
             ),
         )
     }

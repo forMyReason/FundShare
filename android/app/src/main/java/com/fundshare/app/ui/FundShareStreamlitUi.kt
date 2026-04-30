@@ -26,12 +26,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -54,11 +58,15 @@ fun FundShareStreamlitScreen(
     payload: FullPayload?,
     loading: Boolean,
     onRefresh: () -> Unit,
+    snackbarHostState: SnackbarHostState,
+    maintenanceRpc: suspend (String, String) -> String,
 ) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
     val tabs = MainTab.entries
+    val snackScope = rememberCoroutineScope()
 
     Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             CenterAlignedTopAppBar(
                 title = {
@@ -105,7 +113,20 @@ fun FundShareStreamlitScreen(
                     MainTab.PORTFOLIO -> PortfolioTab(payload)
                     MainTab.FUNDS -> FundsTab(payload)
                     MainTab.TRADES -> TradesTab(payload)
-                    MainTab.MAINT -> MaintenanceTab(payload)
+                    MainTab.MAINT ->
+                        MaintenanceTabContent(
+                            payload = payload,
+                            maintenanceRpc = maintenanceRpc,
+                            onAfterSuccess = onRefresh,
+                            onUserMessage = { msg, _ ->
+                                snackScope.launch {
+                                    snackbarHostState.showSnackbar(
+                                        message = msg,
+                                        withDismissAction = true,
+                                    )
+                                }
+                            },
+                        )
                 }
             }
         }
@@ -140,6 +161,13 @@ private fun PortfolioTab(payload: FullPayload) {
                 Text(
                     "扣费后已实现盈亏：${fmtMoney(ov.realizedPnlAfterFees)}",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        } else {
+            item {
+                Text(
+                    "暂无组合概览数据（请下拉刷新或查看维护页错误提示）。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -271,7 +299,7 @@ private fun FundsTab(payload: FullPayload) {
         if (payload.funds.isEmpty()) {
             item { Text("暂无基金数据。") }
         } else {
-            items(payload.funds, key = { it.code + it.name }) { f ->
+            items(payload.funds, key = { "${it.id}_${it.code}" }) { f ->
                 Card(Modifier.fillMaxWidth()) {
                     Row(
                         Modifier
@@ -324,38 +352,6 @@ private fun TradesTab(payload: FullPayload) {
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun MaintenanceTab(payload: FullPayload) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        item {
-            Text("维护 / 关于", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-        }
-        item {
-            Card(Modifier.fillMaxWidth()) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("FundShare", style = MaterialTheme.typography.titleSmall)
-                    Text("核心版本（fundshare）：${payload.version}")
-                    Text("数据目录：", style = MaterialTheme.typography.labelMedium)
-                    Text(
-                        payload.dataDir.ifBlank { "（未设置，使用应用私有目录）" },
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-            }
-        }
-        item {
-            Text(
-                "快捷说明\n" +
-                    "· 基金：在网页端新增代码、无仓删基、清空记录\n" +
-                    "· 交易：买卖、导入、单基净值图\n" +
-                    "· 组合：总览指标、持仓表与导出",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
